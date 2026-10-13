@@ -60,7 +60,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ---
 
-## 本地构建与 Docker 部署
+## 首次部署：本地构建与 Docker
 
 本仓库是项目停止维护前最后一版源码快照。没有可用的 ARTEX 远程镜像、预编译 Release 或上游更新源；部署时需从本地源码构建。首次构建仍需联网下载 Docker 基础镜像及 Debian、Node.js、npm 和 Playwright 依赖。
 
@@ -85,23 +85,36 @@ ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compr
 
 ### 3. 构建本地镜像并启动
 
+> 注意：根目录的 `docker-compose.yml` 默认仍指向远程 `autumn27/artex` 镜像。直接运行 `docker compose up -d` 会使用这份默认配置并尝试拉取该镜像。本文的 Docker 命令都同时加载 `docker-compose.local.yml`，以本地构建的 `artex:local` 运行 ARTEX。
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
-本地覆盖配置使用 `artex:local`，不会拉取已下架的 ARTEX 镜像。首次启动后打开 **http://localhost:8787**，进入 `/setup` 设置管理员密码。Postgres 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。
+首次启动后打开 **http://localhost:8787**，进入 `/setup` 设置管理员密码。Postgres 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。
 
-查看应用日志：
+## 日常使用
+
+首次部署完成后，每次使用前在仓库目录启动已有服务即可，不需要重新编译：
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+```
+
+然后打开 **http://localhost:8787**。查看运行状态或实时日志：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml ps
 docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f artex
 ```
 
-停止服务但保留数据库数据：
+结束本次使用并保留数据库和本地文件：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml down
 ```
+
+`down` 会移除容器，但保留 `pgdata` 卷以及项目目录下的 `data/`、`skills/`；下次仍用上面的 `up -d` 启动。
 
 ## 本地重建
 
