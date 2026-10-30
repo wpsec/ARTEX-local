@@ -1,6 +1,9 @@
 ---
 name: api-recon
 description: 收集网站API接口时调用该skill。
+mcps:
+  - ScopeSentry
+  - browser
 ---
 
 # API Recon（前端接口侦察）

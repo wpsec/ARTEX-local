@@ -914,8 +914,9 @@ CREATE TABLE IF NOT EXISTS skill_usage (
 CREATE INDEX IF NOT EXISTS idx_skill_usage_skill ON skill_usage(skill, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_skill_usage_task  ON skill_usage(task_id);
 
--- 工具调用账本（见 db/tool_usage.go）。一次实际 CoreTool.Call 一行，只记归属维度，
--- 不保存工具参数或返回内容。刻意不设外键，任务、会话或自定义工具删除后仍保留统计。
+-- 工具调用账本（见 db/tool_usage.go）。一次实际 CoreTool.Call 一行，包含内置和 MCP 工具；
+-- MCP key 格式为 mcp:<server_id>:<tool_name>。只记归属维度，不保存参数或返回内容。
+-- 刻意不设外键，任务、会话或自定义工具删除后仍保留统计。
 CREATE TABLE IF NOT EXISTS tool_usage (
     id             BIGSERIAL PRIMARY KEY,
     ts             TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -20,6 +20,12 @@ type WorkerVars struct{ ProxyAddr, WorkerName, DataDir, Now string }
 type MainVars struct{ Goal, AssetSummary, FindingsSummary, DataDir, Now string }
 type GoalsVars struct{ EngagementDescription, DataDir, Now string }
 
+// Prompt overrides are user-editable, so required Skill dispatch guidance stays
+// in the code-owned system-prompt tail.
+const skillUseGuidance = "\n\n**Skill 调用规约**：若当前可用 Skill 的描述明确覆盖本次工作，必须在探测目标或开展实质分析前调用最匹配的 Skill，并遵循其范围、授权条件和证据要求；" +
+	"只加载与当前工作相关的 Skill。Skill 不会扩大用户授权。Skill 声明并解锁的 MCP 仅在相关、可用且操作处于授权范围内时调用；" +
+	"若 MCP 不可用，说明限制后继续允许的工作。没有匹配的 Skill 或 Skill 工具不可用时，继续当前任务。"
+
 // nowStr is the server-local wall-clock string exposed as the universal {{.Now}}
 // prompt variable. renderSystem runs on every agent turn/round, so this is fresh
 // each run — a prompt can subtract it from a fixed start stamp to reason about
@@ -33,8 +39,9 @@ func nowStr() string { return time.Now().Format("2006-01-02 15:04:05 MST") }
 // Rendering always runs (def used to be pre-substituted plain text; it is now a
 // {{.Var}} template like the DB one). On any render error we fall back to the
 // default template, then to the raw default string — an agent never starts with a
-// half-rendered prompt. Callers append the code-owned tail (trafficTool / 中间产物
-// 输出规约) AFTER this, so those can't be edited away via the DB body.
+// half-rendered prompt. Callers append code-owned tails (Skill 调用规约,
+// trafficTool / 中间产物输出规约) AFTER this, so those can't be edited away via
+// the DB body.
 func renderSystem(agentKey, def string, vars any) string {
 	tmpl := def
 	if PromptOverride != nil {

@@ -345,7 +345,15 @@ export default function MCPPage() {
           <div className="flex flex-col divide-y">
             {tools.map((t) => (
               <div key={t.name} className="py-2.5">
-                <code className="font-mono text-sm">{t.name}</code>
+                <div className="flex items-center justify-between gap-3">
+                  <code className="font-mono text-sm">{t.name}</code>
+                  <span
+                    className="text-muted-foreground shrink-0 text-xs"
+                    title="已发起的调用次数，包括返回错误的调用"
+                  >
+                    调用 {t.calls ?? 0} 次
+                  </span>
+                </div>
                 {t.description && (
                   <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                     {t.description}
@@ -408,7 +416,8 @@ export default function MCPPage() {
             </CardHeader>
             <CardContent className="grid gap-3">
               <p className="text-muted-foreground text-sm">
-                {s.tools && s.tools.length > 0 ? `${s.tools.length} 个工具` : "尚未发现工具"}
+                {s.tools && s.tools.length > 0 ? `${s.tools.length} 个工具` : "尚未发现工具"} · 调用{" "}
+                {s.calls ?? 0} 次
               </p>
               <div className="grid gap-2" onClick={(e) => e.stopPropagation()}>
                 <span className="text-muted-foreground text-xs">可见性（按 Agent 授权）</span>

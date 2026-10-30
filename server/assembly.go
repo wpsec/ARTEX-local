@@ -29,6 +29,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			return nil, agent.DeferredInfo{}, nil
 		}
 		var extra []actool.CoreTool
+		runInfo := agent.RunInfoFrom(ctx)
 
 		// --- skills: load visible skills into reg (used for the Skill meta-tool
 		// and to know which MCP servers are skill-gated). ---
@@ -95,7 +96,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 					continue
 				}
 				for _, t := range ts {
-					extra = append(extra, t)
+					extra = append(extra, meterTool(t, pg, db.MCPToolUsageKey(m.ID, t.Name()), a.Key, runInfo))
 					allNames = append(allNames, t.Name())
 					serverTools[m.Name] = append(serverTools[m.Name], t.Name())
 					if directVisible && !skillGated {
@@ -141,7 +142,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			// so the run's task/session ids ride in on the ctx (agent.RunInfo). Read it
 			// once here — this closure is rebuilt per run, so the captured value always
 			// belongs to this run.
-			extra = append(extra, meterSkillTool(reg.Tool(), pg, reg, a.Key, agent.RunInfoFrom(ctx)))
+			extra = append(extra, meterSkillTool(reg.Tool(), pg, reg, a.Key, runInfo))
 		}
 
 		// host tools (traffic / orchestration / custom) — added to every agent's base;

@@ -3185,6 +3185,7 @@ export const mcpServers: MCPServer[] = [
     env: {},
     enabled: true,
     tools: ["host_info", "search", "dns_resolve"],
+    calls: 9,
   },
   {
     id: 2,
@@ -3195,19 +3196,20 @@ export const mcpServers: MCPServer[] = [
     env: {},
     enabled: true,
     tools: ["browser_navigate", "browser_click", "browser_snapshot"],
+    calls: 41,
   },
 ];
 
 export const mcpToolsById: Record<number, MCPTool[]> = {
   1: [
-    { name: "host_info", description: "查询某 IP 的 Shodan 主机信息" },
-    { name: "search", description: "Shodan 搜索" },
-    { name: "dns_resolve", description: "DNS 解析" },
+    { name: "host_info", description: "查询某 IP 的 Shodan 主机信息", calls: 3 },
+    { name: "search", description: "Shodan 搜索", calls: 4 },
+    { name: "dns_resolve", description: "DNS 解析", calls: 2 },
   ],
   2: [
-    { name: "browser_navigate", description: "浏览器打开 URL" },
-    { name: "browser_click", description: "点击元素" },
-    { name: "browser_snapshot", description: "抓取可访问性快照" },
+    { name: "browser_navigate", description: "浏览器打开 URL", calls: 17 },
+    { name: "browser_click", description: "点击元素", calls: 12 },
+    { name: "browser_snapshot", description: "抓取可访问性快照", calls: 12 },
   ],
 };
 

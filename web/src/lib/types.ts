@@ -1179,11 +1179,13 @@ export interface MCPServer {
   enabled: boolean;
   insecure?: boolean; // http: skip TLS cert verification (self-signed servers)
   tools?: string[]; // mcp_tools_cache (names only, for the count)
+  calls: number; // runtime MCP invocation aggregate
 }
 
 export interface MCPTool {
   name: string;
   description: string;
+  calls: number;
 }
 
 // ---- Skills ----

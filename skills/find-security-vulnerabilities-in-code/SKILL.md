@@ -6,6 +6,9 @@ metadata:
   author: usestrix
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/find-security-vulnerabilities-in-code
+mcps:
+  - ScopeSentry
+  - browser
 ---
 
 # 源码安全审查

@@ -6,6 +6,9 @@ metadata:
   author: usestrix
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/web-app-penetration-testing
+mcps:
+  - ScopeSentry
+  - browser
 ---
 
 # Web 应用安全测试

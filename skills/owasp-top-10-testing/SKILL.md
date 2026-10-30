@@ -6,6 +6,9 @@ metadata:
   author: usestrix
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/owasp-top-10-testing
+mcps:
+  - ScopeSentry
+  - browser
 ---
 
 # OWASP Top 10 覆盖评估

@@ -6,6 +6,9 @@ metadata:
   author: usestrix
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/api-security-testing
+mcps:
+  - browser
+  - ScopeSentry
 ---
 
 # API 安全测试

@@ -1,47 +1,35 @@
 ---
-
-## name: scopesentry-mcp
+name: scopesentry-mcp
 description: 通过 ScopeSentry MCP 管理安全扫描平台（项目、任务、模板、资产、节点）。在用户提到 ScopeSentry、MCP、API Key、扫描任务、资产查询时使用。
-
+  - ScopeSentry
+mcps: ScopeSentry, browser
+---
 # ScopeSentry MCP 使用指南
-
 面向**已部署 ScopeSentry 实例**的用户。通过 Cursor（或其他 MCP 客户端）连接平台，无需本地源码。
-
 ## 1. 准备工作
-
 ### 1.1 确认服务可访问
-
-- 默认 Web 界面：`http://<主机>`
-- MCP 端点：`http://<主机>/mcp`（若前面有反向代理或前端代理，以实际 `/mcp` 地址为准）
-
+- 默认 Web 界面：`http: //<主机>`
+- MCP 端点：`http: //<主机>/mcp`（若前面有反向代理或前端代理，以实际 `/mcp` 地址为准）
 ### 1.2 创建 API Key
-
 1. 浏览器登录 ScopeSentry Web 界面
 2. 进入 **API Key** 管理页创建密钥（或通过管理员提供的接口创建）
 3. 保存返回的 `ssk_...` 字符串（**仅显示一次**）
-
 ### 1.3 配置 Cursor MCP
-
 Cursor → Settings → MCP → 添加服务器：
-
 ```json
 {
-  "mcpServers": {
-    "scopesentry": {
-      "url": "http://<你的主机>:8082/mcp",
-      "headers": {
-        "X-API-Key": "ssk_你的密钥"
+"mcpServers": {
+"scopesentry": {
+"url": "http://<你的主机>:8082/mcp",
+"headers": {
+"X-API-Key": "ssk_你的密钥"
       }
     }
   }
 }
 ```
-
 也可使用：`Authorization: Bearer ssk_你的密钥`
-
 配置完成后重启 MCP 或重载 Cursor，确认工具列表中出现 `list_projects`、`list_assets` 等。
-
----
 
 ## 2. 工具一览
 

@@ -87,8 +87,18 @@ function AgentGridCard({
           {agent.description || "（无描述）"}
         </p>
         <div className="text-muted-foreground flex flex-wrap gap-1.5 text-[10px]">
-          <span className="rounded border px-1.5 py-0.5">MCP {agent.mcp_count ?? 0}</span>
-          <span className="rounded border px-1.5 py-0.5">Skill {agent.skill_count ?? 0}</span>
+          <span
+            className="rounded border px-1.5 py-0.5"
+            title="该 agent 可见的 MCP 服务器绑定数，不是调用次数"
+          >
+            MCP 绑定 {agent.mcp_count ?? 0}
+          </span>
+          <span
+            className="rounded border px-1.5 py-0.5"
+            title="该 agent 可见的 Skill 绑定数，不是调用次数"
+          >
+            Skill 绑定 {agent.skill_count ?? 0}
+          </span>
           <span className="rounded border px-1.5 py-0.5">工具 {agent.tool_count ?? 0}</span>
         </div>
       </button>

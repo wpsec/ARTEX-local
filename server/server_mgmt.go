@@ -857,6 +857,14 @@ func (s *Server) pgListMCP(w http.ResponseWriter, r *http.Request) {
 	if ms == nil {
 		ms = []*db.MCPServer{}
 	}
+	counts, countErr := pg.MCPUsageCounts()
+	if countErr != nil {
+		log.Printf("[mcp] 读取调用统计失败: %v", countErr)
+	} else {
+		for _, m := range ms {
+			m.Calls = counts[m.ID]
+		}
+	}
 	writeJSON(w, 200, map[string]any{"servers": ms})
 }
 
@@ -934,7 +942,19 @@ func (s *Server) pgRefreshMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tools, _ := pg.MCPToolsDetailed(id)
+	attachMCPToolUsageCounts(pg, id, tools)
 	writeJSON(w, 200, map[string]any{"tools": tools})
+}
+
+func attachMCPToolUsageCounts(pg *db.DB, serverID int64, tools []db.MCPTool) {
+	counts, err := pg.MCPToolUsageCounts(serverID)
+	if err != nil {
+		log.Printf("[mcp] %d 读取工具调用统计失败: %v", serverID, err)
+		return
+	}
+	for i := range tools {
+		tools[i].Calls = counts[tools[i].Name]
+	}
 }
 
 // pgMCPTools returns one MCP's cached tools (name + description) for the detail UI.
@@ -952,6 +972,7 @@ func (s *Server) pgMCPTools(w http.ResponseWriter, r *http.Request) {
 	if tools == nil {
 		tools = []db.MCPTool{}
 	}
+	attachMCPToolUsageCounts(pg, id, tools)
 	writeJSON(w, 200, map[string]any{"tools": tools})
 }
 

@@ -815,8 +815,9 @@ type MCPServer struct {
 	Env       json.RawMessage `json:"env"`
 	URL       string          `json:"url,omitempty"`
 	Enabled   bool            `json:"enabled"`
-	Insecure  bool            `json:"insecure"` // http: skip TLS cert verification (self-signed servers, issue #108)
+	Insecure  bool            `json:"insecure"`        // http: skip TLS cert verification (self-signed servers, issue #108)
 	Tools     []string        `json:"tools,omitempty"` // cached tool names (mcp_tools_cache)
+	Calls     int             `json:"calls"`           // runtime usage aggregate
 }
 
 func (d *DB) ListMCP() ([]*MCPServer, error) {
@@ -869,6 +870,7 @@ func (d *DB) MCPToolNames(serverID int64) ([]string, error) {
 type MCPTool struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Calls       int    `json:"calls"`
 }
 
 // MCPToolsDetailed returns the cached tools (name + description) for a server.
