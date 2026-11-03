@@ -22,6 +22,7 @@ type Answer struct {
 func (s SideQuestionService) Answer(ctx context.Context, req llm.CompletionRequest, streaming bool, update func(Answer)) (out Answer, err error) {
 	if streaming {
 		complete := false
+		stopReason := ""
 		for ev, streamErr := range s.Provider.Stream(ctx, req) {
 			if streamErr != nil {
 				err = streamErr
@@ -32,8 +33,14 @@ func (s SideQuestionService) Answer(ctx context.Context, req llm.CompletionReque
 				out.Text += ev.Text
 			case llm.SEToolUseStart:
 				out.ToolUse = true
-			case llm.SEMessageStart, llm.SEMessageDelta:
+			case llm.SEMessageStart:
 				out.Usage.Add(ev.Usage)
+			case llm.SEMessageDelta:
+				out.Usage.Add(ev.Usage)
+				if ev.StopReason != "" {
+					complete = true
+					stopReason = ev.StopReason
+				}
 			case llm.SEMessageStop:
 				complete = true
 			}
@@ -45,8 +52,13 @@ func (s SideQuestionService) Answer(ctx context.Context, req llm.CompletionReque
 				break
 			}
 		}
-		if err == nil && !complete {
-			err = errors.New("模型响应中断，请重新提问")
+		if err == nil {
+			switch {
+			case outputLimitStopReason(stopReason):
+				err = errors.New("模型输出达到 token 上限，回答可能不完整")
+			case !complete:
+				err = errors.New("模型响应中断，请重新提问")
+			}
 		}
 	} else {
 		var msg llm.Message
@@ -64,4 +76,13 @@ func (s SideQuestionService) Answer(ctx context.Context, req llm.CompletionReque
 		}
 	}
 	return out, err
+}
+
+func outputLimitStopReason(reason string) bool {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "length", "max_tokens", "max_output_tokens", "max_completion_tokens":
+		return true
+	default:
+		return false
+	}
 }

@@ -167,7 +167,7 @@ func (p *boundProvider) Stream(ctx context.Context, req llm.CompletionRequest) i
 				failed = true
 			} else {
 				acc.Add(ev)
-				if ev.Type == llm.SEMessageStop {
+				if ev.Type == llm.SEMessageStop || (ev.Type == llm.SEMessageDelta && strings.TrimSpace(ev.StopReason) != "") {
 					complete = true
 				}
 			}

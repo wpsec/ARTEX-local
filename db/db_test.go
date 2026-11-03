@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -52,30 +53,35 @@ func TestApplySchemaRetriesOnlyDeadlocks(t *testing.T) {
 }
 
 func TestBuiltinSkillVisibilityDefaults(t *testing.T) {
-	wantAgents := map[string]bool{"auto": true, "pentest": true, "worker": true}
 	wantSkills := []string{
+		"api-recon",
+		"analyzing-android-malware-with-apktool",
+		"analyzing-golang-malware-with-ghidra",
+		"analyzing-linux-elf-malware",
+		"analyzing-malware-behavior-with-cuckoo-sandbox",
+		"analyzing-network-traffic-of-malware",
+		"analyzing-packed-malware-with-upx-unpacker",
 		"application-security-testing",
+		"deobfuscating-javascript-malware",
 		"web-app-penetration-testing",
 		"api-security-testing",
 		"owasp-top-10-testing",
 		"find-security-vulnerabilities-in-code",
+		"reverse-engineering-router",
+		"analyzing-uefi-bootkit-persistence",
+		"authorized-pentest-router",
+		"conducting-internal-network-penetration-test",
+		"conducting-cloud-penetration-testing",
+		"conducting-mobile-app-penetration-test",
+		"conducting-social-engineering-penetration-test",
+		"authorized-red-team-operations",
 	}
 	for _, name := range wantSkills {
 		got := builtinSkillVisibility[name]
-		if len(got) != len(wantAgents) {
-			t.Errorf("%s visibility=%v, want agents %v", name, got, wantAgents)
-			continue
+		want := []string{"auto", "pentest", "worker"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s visibility=%v, want agents %v", name, got, want)
 		}
-		for _, agent := range got {
-			if !wantAgents[agent] {
-				t.Errorf("%s unexpectedly visible to %s", name, agent)
-			}
-			delete(wantAgents, agent)
-		}
-		if len(wantAgents) != 0 {
-			t.Errorf("%s missing default agents: %v", name, wantAgents)
-		}
-		wantAgents = map[string]bool{"auto": true, "pentest": true, "worker": true}
 	}
 }
 

@@ -322,12 +322,27 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 // declares `mcps: ScopeSentry`, which only takes effect once it's made visible and
 // that MCP is enabled/configured.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon":                             {"auto", "pentest", "worker"},
-	"application-security-testing":          {"auto", "pentest", "worker"},
-	"web-app-penetration-testing":           {"auto", "pentest", "worker"},
-	"api-security-testing":                  {"auto", "pentest", "worker"},
-	"owasp-top-10-testing":                  {"auto", "pentest", "worker"},
-	"find-security-vulnerabilities-in-code": {"auto", "pentest", "worker"},
+	"api-recon":                 {"auto", "pentest", "worker"},
+	"authorized-pentest-router": {"auto", "pentest", "worker"},
+	"conducting-internal-network-penetration-test":   {"auto", "pentest", "worker"},
+	"conducting-cloud-penetration-testing":           {"auto", "pentest", "worker"},
+	"conducting-mobile-app-penetration-test":         {"auto", "pentest", "worker"},
+	"conducting-social-engineering-penetration-test": {"auto", "pentest", "worker"},
+	"authorized-red-team-operations":                 {"auto", "pentest", "worker"},
+	"application-security-testing":                   {"auto", "pentest", "worker"},
+	"web-app-penetration-testing":                    {"auto", "pentest", "worker"},
+	"api-security-testing":                           {"auto", "pentest", "worker"},
+	"owasp-top-10-testing":                           {"auto", "pentest", "worker"},
+	"find-security-vulnerabilities-in-code":          {"auto", "pentest", "worker"},
+	"reverse-engineering-router":                     {"auto", "pentest", "worker"},
+	"analyzing-android-malware-with-apktool":         {"auto", "pentest", "worker"},
+	"analyzing-linux-elf-malware":                    {"auto", "pentest", "worker"},
+	"analyzing-golang-malware-with-ghidra":           {"auto", "pentest", "worker"},
+	"analyzing-packed-malware-with-upx-unpacker":     {"auto", "pentest", "worker"},
+	"deobfuscating-javascript-malware":               {"auto", "pentest", "worker"},
+	"analyzing-uefi-bootkit-persistence":             {"auto", "pentest", "worker"},
+	"analyzing-network-traffic-of-malware":           {"auto", "pentest", "worker"},
+	"analyzing-malware-behavior-with-cuckoo-sandbox": {"auto", "pentest", "worker"},
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default
