@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/config"
-	"github.com/Autumn-27/artex/selfupdate"
-	"github.com/Autumn-27/artex/server"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/config"
+	"github.com/wpsec/ARTEX-local/selfupdate"
+	"github.com/wpsec/ARTEX-local/server"
 )
 
 // version is the build version, injected at release time via

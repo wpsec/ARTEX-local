@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

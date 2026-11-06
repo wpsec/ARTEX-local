@@ -8,6 +8,7 @@
     "build:static": "NEXT_EXPORT=1 next build --webpack",
     "start": "next start",
     "lint": "biome lint",
+    "test:e2e": "playwright test",
     "format": "biome format --write",
     "check": "biome check",
     "check:fix": "biome check --write",
@@ -64,6 +65,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/postcss": "^4.3.2",
     "@types/d3-geo": "^3.1.0",
     "@types/node": "^22.20.0",

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"

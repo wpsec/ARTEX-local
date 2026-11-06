@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/llmrec"
+	"github.com/wpsec/ARTEX-local/llmrec"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
 	"github.com/Autumn-27/norma/llm"

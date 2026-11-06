@@ -6,7 +6,7 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/db"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 )

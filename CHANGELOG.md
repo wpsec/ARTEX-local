@@ -4,7 +4,7 @@
 
 ## [Unreleased]
 
-## [0.3.15] - 2026-10-07
+## 0.3.15 - 2026-10-07
 
 ### 拦截
 
@@ -103,7 +103,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.14] - 2026-09-24
+## 0.3.14 - 2026-09-24
 
 ### 任务列表
 
@@ -129,7 +129,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.13] - 2026-09-19
+## 0.3.13 - 2026-09-19
 
 ### 资产拦截
 
@@ -169,7 +169,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.12] - 2026-09-17
+## 0.3.12 - 2026-09-17
 
 ### 探索链路播报板
 
@@ -240,7 +240,7 @@
 - [@RuoJi6](https://github.com/RuoJi6)
 - [@dingpotian](https://github.com/dingpotian)
 
-## [0.3.11] - 2026-09-15
+## 0.3.11 - 2026-09-15
 
 ### 操作审查
 
@@ -295,7 +295,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@RuoJi6](https://github.com/RuoJi6)
 
-## [0.3.10] - 2026-09-13
+## 0.3.10 - 2026-09-13
 
 ### 网络
 
@@ -334,7 +334,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.9] - 2026-09-11
+## 0.3.9 - 2026-09-11
 
 ### Agent
 
@@ -431,7 +431,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@RuoJi6](https://github.com/RuoJi6)
 
-## [0.3.8] - 2026-09-09
+## 0.3.8 - 2026-09-09
 
 ### LLM
 
@@ -503,7 +503,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.7] - 2026-08-31
+## 0.3.7 - 2026-08-31
 
 ### LLM
 
@@ -567,7 +567,7 @@
 - [@neouks](https://github.com/neouks)
 - [@begininvoke](https://github.com/begininvoke)
 
-## [0.3.6] - 2026-08-27
+## 0.3.6 - 2026-08-27
 
 ### LLM
 
@@ -598,7 +598,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.5] - 2026-08-25
+## 0.3.5 - 2026-08-25
 
 ### LLM
 
@@ -647,7 +647,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@neouks](https://github.com/neouks)
 
-## [0.3.4] - 2026-08-24
+## 0.3.4 - 2026-08-24
 
 ### UI
 
@@ -696,7 +696,7 @@
 
 - [@neouks](https://github.com/neouks)
 
-## [0.3.3] - 2026-08-23
+## 0.3.3 - 2026-08-23
 
 ### Worker
 
@@ -845,7 +845,7 @@
 
 - [@neouks](https://github.com/neouks)
 
-## [0.3.2] - 2026-08-20
+## 0.3.2 - 2026-08-20
 
 ### Added
 
@@ -886,13 +886,4 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@neouks](https://github.com/neouks)
 
-[Unreleased]: https://github.com/Autumn-27/ARTEX/compare/v0.3.10...HEAD
-[0.3.10]: https://github.com/Autumn-27/ARTEX/compare/v0.3.9...v0.3.10
-[0.3.9]: https://github.com/Autumn-27/ARTEX/compare/v0.3.8...v0.3.9
-[0.3.8]: https://github.com/Autumn-27/ARTEX/compare/v0.3.7...v0.3.8
-[0.3.7]: https://github.com/Autumn-27/ARTEX/compare/v0.3.6...v0.3.7
-[0.3.6]: https://github.com/Autumn-27/ARTEX/compare/v0.3.5...v0.3.6
-[0.3.5]: https://github.com/Autumn-27/ARTEX/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/Autumn-27/ARTEX/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/Autumn-27/ARTEX/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/Autumn-27/ARTEX/compare/v0.3.1...v0.3.2
+[Unreleased]: https://github.com/wpsec/ARTEX-local/commits/artex-iteration/

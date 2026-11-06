@@ -1,0 +1,36 @@
+# 工程准备与质量门禁
+
+## 本次落地
+
+- 增加 `NOTICE.md` 并在 README 显著标注 ARTEX 衍生关系、原始项目作者、独立维护状态和声明日期；保留根目录 AGPL-3.0 与 `web/LICENSE` 的 MIT 文本不变。
+- 增加 PR 和分支 CI：Go 测试、`go vet`、前端 TypeScript、静态构建、Playwright Chromium 回归和 Go 漏洞扫描。
+- Go CI 使用临时 PostgreSQL 服务；浏览器测试通过 mock API 固定长 Skill 名称和任务操作列布局。
+- 增加 Dependabot 周更、贡献指南、安全报告说明、PR 模板和 Issue 表单。
+- 发布工作流采用最小权限：默认只读，创建 GitHub Release 的 job 单独申请 `contents: write`。
+
+## 本地验证
+
+- `npm run test:e2e`：2 个 Chromium 回归用例通过。
+- `npx tsc --noEmit --pretty false`、`npm run build:static` 和 Playwright 文件的 Biome 检查通过。
+- `git diff --check` 通过。
+- 本地 `go test ./...` 受执行环境限制，无法完整验证：沙箱阻断 Go 模块代理访问和测试所需的 loopback HTTP listener。CI 中配置独立 PostgreSQL 服务后运行 Go 测试和 `go vet`。
+
+## Review 后续修复（2026-11-07）
+
+- CI 将静态构建放在独立 TypeScript 检查之前，保证 `.next/types` 与 `next-env.d.ts` 已生成；贡献指南中的命令顺序同步调整。
+- 任务操作列浏览器回归现在会把视口缩至 1024px，滚动表格容器到最右侧，并校验操作列保持在原视口位置且按钮没有溢出。
+- 本次 follow-up 未重跑浏览器测试；此前记录的 2 项通过发生在新增横向滚动断言之前。合并前应由 CI 重跑回归。
+
+## 依赖风险待复核
+
+添加 Playwright 时，npm audit 报告当前 Web 依赖树存在 26 项漏洞（2 项严重、15 项高危、8 项中危、1 项低危）。本次没有自动升级无关依赖；合并前应查看具体受影响包和可用修复版本，并单独评估升级影响。
+
+## 仓库管理员待配置
+
+当前变更只包含仓库文件，尚未修改 GitHub 远端设置。启用 [GitHub 仓库设置清单](github-repository-settings.md) 后，`main` 才会强制要求 Pull Request 和 CI 通过。
+
+## 后续建议
+
+- 在真实 Pull Request 上观察一轮 CI，用结果校准耗时和易波动的检查。
+- 版本发布时补充 SBOM 和构建来源证明；先确认分发格式与使用方需求，再决定产物格式。
+- 维护者和贡献者增加后，再要求至少一名代码审查者批准，避免单人维护时把自己锁在仓库外。

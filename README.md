@@ -5,7 +5,9 @@
 AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 
-📦 **作者已停止维护项目；本仓库保存最后一版源码。Docker 镜像与预编译 Release 已不可用，请按下方说明从源码本地构建容器并运行。**
+**本仓库是 ARTEX 的独立修改版本，基于原始 ARTEX 项目源码继续开发，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。本声明更新于 2026-11-07，来源和许可说明见 [NOTICE.md](NOTICE.md)。**
+
+📦 **原始项目已停止维护。Docker 镜像与预编译 Release 尚不可用，请按下方说明从源码本地构建容器并运行。**
 
 </div>
 
@@ -62,7 +64,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ## 首次部署：本地构建与 Docker
 
-本仓库是项目停止维护前最后一版源码快照。没有可用的 ARTEX 远程镜像、预编译 Release 或上游更新源；部署时需从本地源码构建。首次构建仍需联网下载 Docker 基础镜像及 Debian、Node.js、npm 和 Playwright 依赖。
+本项目是 ARTEX 的独立衍生版本，基于原项目停止维护前的源码继续开发；版本检查和发布物均由当前仓库维护。当前项目尚未发布容器镜像或预编译 Release 时，可按下列步骤从本地源码构建。首次构建仍需联网下载 Docker 基础镜像及 Debian、Node.js、npm 和 Playwright 依赖。
 
 需要 macOS 或 Linux、Go 1.26.3+、Node.js/npm、rsync、Docker Engine 和 Docker Compose。
 
@@ -85,7 +87,7 @@ ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compr
 
 ### 3. 构建本地镜像并启动
 
-> 注意：根目录的 `docker-compose.yml` 默认仍指向远程 `autumn27/artex` 镜像。直接运行 `docker compose up -d` 会使用这份默认配置并尝试拉取该镜像。本文的 Docker 命令都同时加载 `docker-compose.local.yml`，以本地构建的 `artex:local` 运行 ARTEX。
+> 根目录的 `docker-compose.yml` 使用本项目 GHCR 镜像 `ghcr.io/wpsec/artex-local`。本文命令同时加载 `docker-compose.local.yml`，以本地源码构建的 `artex:local` 运行 ARTEX。
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
@@ -378,9 +380,9 @@ flowchart TB
 
 ### 开源协议
 
-本项目采用 **GNU Affero General Public License v3.0（AGPL-3.0）** 授权，完整条款见仓库根目录的 [LICENSE](LICENSE) 文件。
+本项目是 ARTEX 的修改版本。根目录 [LICENSE](LICENSE) 收录 GNU Affero General Public License v3.0（AGPL-3.0）完整条款；项目来源、修改日期和许可说明见 [NOTICE.md](NOTICE.md)。仓库还保留了 [web/LICENSE](web/LICENSE) 中的 MIT 许可文本及版权声明，本说明不改写其适用范围。
 
-这意味着任何人都可以自由使用、修改和分发本项目，但**衍生作品必须同样以 AGPL-3.0 开源**；特别地，**若你修改本项目并通过网络（如部署为在线服务）向用户提供，也必须向这些用户公开对应的完整源码**。
+复制、修改、分发或通过网络提供服务时，应遵守对应材料适用的许可证完整条款。根目录 AGPL-3.0 与 `web/LICENSE` 中的 MIT 许可文本并存；具体文件适用范围应结合相应的版权与许可声明确认。
 
 > **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
 

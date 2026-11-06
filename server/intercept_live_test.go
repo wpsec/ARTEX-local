@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/Autumn-27/norma/llm"
 )
 

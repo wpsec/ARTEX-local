@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/mcphttp"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/mcphttp"
 )
 
 // 资产同步（ScopeSentry 数据源）。

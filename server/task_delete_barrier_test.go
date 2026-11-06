@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
+	"github.com/wpsec/ARTEX-local/agent"
 )
 
 func TestEngineDeleteBarrierRejectsNewTaskOperations(t *testing.T) {

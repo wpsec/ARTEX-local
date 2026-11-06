@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
