@@ -68,6 +68,18 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	if data, err := os.ReadFile(path); err == nil && len(strings.TrimSpace(string(data))) >= 32 {
 		return []byte(strings.TrimSpace(string(data))), nil
 	}
+	buf, err := newJWTKey()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, buf, 0600); err != nil {
+		return nil, fmt.Errorf("write jwt key: %w", err)
+	}
+	log.Printf("[auth] 新 JWT key 已写入 %s", path)
+	return buf, nil
+}
+
+func newJWTKey() ([]byte, error) {
 	buf := make([]byte, 32)
 	for i := range buf {
 		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(keyChars))))
@@ -76,11 +88,66 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 		}
 		buf[i] = keyChars[n.Int64()]
 	}
-	if err := os.WriteFile(path, buf, 0600); err != nil {
-		return nil, fmt.Errorf("write jwt key: %w", err)
-	}
-	log.Printf("[auth] 新 JWT key 已写入 %s", path)
 	return buf, nil
+}
+
+func persistJWTKey(path string, key []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".jwt-key-*")
+	if err != nil {
+		return fmt.Errorf("create temporary jwt key: %w", err)
+	}
+	tmpPath := tmp.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			if err := tmp.Close(); err != nil {
+				log.Printf("[auth] 临时 JWT key 关闭失败: %v", err)
+			}
+		}
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[auth] 临时 JWT key 清理失败: %v", err)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("set temporary jwt key permissions: %w", err)
+	}
+	if _, err := tmp.Write(key); err != nil {
+		return fmt.Errorf("write temporary jwt key: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temporary jwt key: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary jwt key: %w", err)
+	}
+	closed = true
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace jwt key: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) jwtKeySnapshot() []byte {
+	s.jwtKeyMu.RLock()
+	defer s.jwtKeyMu.RUnlock()
+	return s.jwtKey
+}
+
+func (s *Server) rotateJWTKey() error {
+	if s.jwtKeyPath == "" {
+		return fmt.Errorf("jwt key path is unavailable")
+	}
+	key, err := newJWTKey()
+	if err != nil {
+		return err
+	}
+	s.jwtKeyMu.Lock()
+	defer s.jwtKeyMu.Unlock()
+	if err := persistJWTKey(s.jwtKeyPath, key); err != nil {
+		return err
+	}
+	s.jwtKey = key
+	return nil
 }
 
 // signJWT issues a 7-day HS256 token for user ARTEX.
@@ -103,16 +170,31 @@ func verifyJWT(tokenStr string, key []byte) bool {
 	return err == nil && t.Valid
 }
 
-// extractToken reads the JWT from Authorization: Bearer header,
-// artex_token cookie, or ?token= query param (for SSE connections).
+// extractToken accepts ambient browser credentials only for safe methods. Query
+// tokens are limited to the SSE endpoints because EventSource cannot set headers.
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return ""
+	}
 	if c, err := r.Cookie("artex_token"); err == nil && c.Value != "" {
 		return c.Value
 	}
-	return r.URL.Query().Get("token")
+	if sseQueryTokenPath(r.URL.Path) {
+		return r.URL.Query().Get("token")
+	}
+	return ""
+}
+
+func sseQueryTokenPath(path string) bool {
+	switch path {
+	case "/api/logs/stream", "/api/update/stream", "/api/exploration/activity/stream":
+		return true
+	default:
+		return strings.HasPrefix(path, "/api/side-questions/") && strings.HasSuffix(path, "/events")
+	}
 }
 
 // requireAuth wraps h with JWT validation.
@@ -129,7 +211,7 @@ func (s *Server) requireAuth(h http.Handler) http.Handler {
 			writeErr(w, 401, "未授权")
 			return
 		}
-		if !verifyJWT(tok, s.jwtKey) {
+		if !verifyJWT(tok, s.jwtKeySnapshot()) {
 			writeErr(w, 401, "token 无效或已过期")
 			return
 		}
@@ -197,7 +279,7 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 403, "密码已设置")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	tok, err := signJWT(s.jwtKeySnapshot())
 	if err != nil {
 		writeErr(w, 500, "token 生成失败")
 		return
@@ -209,11 +291,14 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 // token (this route is under /api/auth/* which requireAuth exempts, so the token
 // is validated here) AND the current password.
 func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
+	s.authChangeMu.Lock()
+	defer s.authChangeMu.Unlock()
+
 	pg := s.pg(w)
 	if pg == nil {
 		return
 	}
-	if !verifyJWT(extractToken(r), s.jwtKey) {
+	if !verifyJWT(extractToken(r), s.jwtKeySnapshot()) {
 		writeErr(w, 401, "未授权")
 		return
 	}
@@ -251,15 +336,27 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "密码加密失败")
 		return
 	}
+	if err := s.rotateJWTKey(); err != nil {
+		writeErr(w, 500, "会话刷新失败，请重试")
+		return
+	}
 	if err := pg.SetSetting(authPassKey, string(newHash)); err != nil {
 		writeErr(w, 500, "保存失败: "+err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	tok, err := signJWT(s.jwtKeySnapshot())
+	if err != nil {
+		writeErr(w, 500, "token 生成失败")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "token": tok})
 }
 
 // POST /api/auth/login — validates username/password and returns a JWT.
 func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
+	s.authChangeMu.RLock()
+	defer s.authChangeMu.RUnlock()
+
 	pg := s.pg(w)
 	if pg == nil {
 		return
@@ -289,7 +386,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "用户名或密码错误")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	tok, err := signJWT(s.jwtKeySnapshot())
 	if err != nil {
 		writeErr(w, 500, "token 生成失败")
 		return
