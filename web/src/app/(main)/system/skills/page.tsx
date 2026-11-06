@@ -190,7 +190,7 @@ function SkillsOverview({
   ];
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full min-w-0 max-w-3xl space-y-6">
       <div>
         <h2 className="text-base font-semibold">技能库总览</h2>
         <p className="text-muted-foreground text-sm">选择左侧的 Skill 查看详情与调用记录，或从这里快速了解整体使用情况。</p>
@@ -239,9 +239,9 @@ function SkillsOverview({
         )}
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid min-w-0 gap-6 sm:grid-cols-2">
         {/* 最近调用 */}
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label className="text-xs text-muted-foreground">最近调用</Label>
           {agg.recent.length === 0 ? (
             <p className="text-muted-foreground text-xs">暂无记录。</p>
@@ -263,7 +263,7 @@ function SkillsOverview({
         </div>
 
         {/* 未使用（可清理 / 需曝光） */}
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <Label className="text-xs text-muted-foreground">
             未使用的 Skill
             {agg.neverUsed.length > 0 && <span className="ml-1 font-normal">（{agg.neverUsed.length}）</span>}
@@ -271,16 +271,17 @@ function SkillsOverview({
           {agg.neverUsed.length === 0 ? (
             <p className="text-muted-foreground text-xs">所有 Skill 都被调用过。</p>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex min-w-0 flex-wrap gap-1.5">
               {agg.neverUsed.map((s) => (
                 <button
                   key={s.name}
                   type="button"
                   onClick={() => onSelect(s.name)}
                   title={s.name}
+                  className="min-w-0 max-w-full"
                 >
-                  <Badge variant="outline" className="max-w-[12rem] cursor-pointer truncate font-mono text-xs font-normal hover:bg-muted">
-                    {s.name}
+                  <Badge variant="outline" className="h-auto max-w-[12rem] min-w-0 cursor-pointer justify-start whitespace-normal break-words text-left font-mono text-xs font-normal leading-4 hover:bg-muted">
+                    <span className="min-w-0 [overflow-wrap:anywhere]">{s.name}</span>
                   </Badge>
                 </button>
               ))}
@@ -834,7 +835,7 @@ export default function SkillsPage() {
         </div>
 
         {/* ── 右侧面板 ── */}
-        <div className="flex flex-1 flex-col overflow-auto p-4">
+        <div className="flex min-w-0 flex-1 flex-col overflow-auto p-4">
           {!selected && (
             <SkillsOverview
               skills={skills}
