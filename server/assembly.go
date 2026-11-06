@@ -334,6 +334,31 @@ func contains(ss []string, v string) bool {
 	return false
 }
 
+// seedInstalledSkillVisibility makes filesystem-installed skills available to the
+// default runtime agents while preserving visibility rows users already changed.
+func seedInstalledSkillVisibility(pg *db.DB, skillDir string) {
+	if pg == nil {
+		return
+	}
+	reg, err := skill.LoadDir(skillDir)
+	if err != nil {
+		log.Printf("[skills] 读取已安装 Skill 失败，跳过默认授权: %v", err)
+		return
+	}
+	if reg == nil {
+		return
+	}
+	for _, s := range reg.List() {
+		if s.Dir == "" {
+			continue
+		}
+		name := filepath.Base(s.Dir)
+		if err := pg.SeedDefaultSkillVisibility(name); err != nil {
+			log.Printf("[skills] 默认授权 %s 失败: %v", name, err)
+		}
+	}
+}
+
 // buildDomainReg builds a name→CoreTool registry from a server-level ToolSet
 // (real AssetStore, nil ExplorationStore, taskID=0). Used by ToolResolve to inject
 // domain tools into agents (Auto, custom) that don't own a per-task ToolSet.

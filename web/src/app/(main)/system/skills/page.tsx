@@ -362,7 +362,7 @@ export default function SkillsPage() {
     setUploading(true);
     try {
       const r = await api.uploadSkill(file, overwrite);
-      toast.success(`已安装 Skill：${r.name}（${r.files} 个文件）`);
+      toast.success(`已安装并授权 Skill：${r.name}（${r.files} 个文件）`);
       load();
     } catch (e) {
       const msg = (e as Error).message;

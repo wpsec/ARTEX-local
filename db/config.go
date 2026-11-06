@@ -946,6 +946,29 @@ func (d *DB) DeleteMCP(id int64) error {
 
 // ---------- Skill visibility (agent × skill_name) ----------
 
+// SeedDefaultSkillVisibility adds default visibility for a newly installed skill.
+// Existing rows are preserved so an explicit per-agent opt-out stays in effect.
+func (d *DB) SeedDefaultSkillVisibility(skillName string) error {
+	return d.seedSkillVisibility(skillName, defaultSkillAgentKeys)
+}
+
+func (d *DB) seedSkillVisibility(skillName string, agentKeys []string) error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, key := range agentKeys {
+		if _, err := tx.Exec(`
+INSERT INTO agent_skill_visibility(agent_id, skill_name, enabled)
+SELECT id, $2, true FROM agents WHERE key=$1
+ON CONFLICT (agent_id, skill_name) DO NOTHING`, key, skillName); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // AgentSkillNames returns the skill directory names visible to an agent.
 func (d *DB) AgentSkillNames(agentID int64) ([]string, error) {
 	rows, err := d.Query(`SELECT skill_name FROM agent_skill_visibility WHERE agent_id=$1 AND enabled ORDER BY skill_name`, agentID)

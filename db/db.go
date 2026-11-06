@@ -314,35 +314,38 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 	return d.SetSetting("asset_intercept_default_rules_v1", "done")
 }
 
+// defaultSkillAgentKeys are the built-in runtime agents that receive newly installed
+// skills by default. Explicit per-agent opt-outs remain stored in the visibility table.
+var defaultSkillAgentKeys = []string{"auto", "pentest", "worker"}
+
 // builtinSkillVisibility maps a shipped skill's directory name → the built-in
 // agent keys that should see it by default. The skill FILES themselves live on the
 // filesystem (SkillDir, loaded by norma at runtime); DB only carries this visibility
-// binding. Skills omitted here (e.g. playwright-cli, scopesentry) ship invisible by
-// default — the user turns them on per-agent when needed. scopesentry additionally
-// declares `mcps: ScopeSentry`, which only takes effect once it's made visible and
-// that MCP is enabled/configured.
+// binding. ScopeSentry's MCP still requires separate enablement and configuration.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon":                 {"auto", "pentest", "worker"},
-	"authorized-pentest-router": {"auto", "pentest", "worker"},
-	"conducting-internal-network-penetration-test":   {"auto", "pentest", "worker"},
-	"conducting-cloud-penetration-testing":           {"auto", "pentest", "worker"},
-	"conducting-mobile-app-penetration-test":         {"auto", "pentest", "worker"},
-	"conducting-social-engineering-penetration-test": {"auto", "pentest", "worker"},
-	"authorized-red-team-operations":                 {"auto", "pentest", "worker"},
-	"application-security-testing":                   {"auto", "pentest", "worker"},
-	"web-app-penetration-testing":                    {"auto", "pentest", "worker"},
-	"api-security-testing":                           {"auto", "pentest", "worker"},
-	"owasp-top-10-testing":                           {"auto", "pentest", "worker"},
-	"find-security-vulnerabilities-in-code":          {"auto", "pentest", "worker"},
-	"reverse-engineering-router":                     {"auto", "pentest", "worker"},
-	"analyzing-android-malware-with-apktool":         {"auto", "pentest", "worker"},
-	"analyzing-linux-elf-malware":                    {"auto", "pentest", "worker"},
-	"analyzing-golang-malware-with-ghidra":           {"auto", "pentest", "worker"},
-	"analyzing-packed-malware-with-upx-unpacker":     {"auto", "pentest", "worker"},
-	"deobfuscating-javascript-malware":               {"auto", "pentest", "worker"},
-	"analyzing-uefi-bootkit-persistence":             {"auto", "pentest", "worker"},
-	"analyzing-network-traffic-of-malware":           {"auto", "pentest", "worker"},
-	"analyzing-malware-behavior-with-cuckoo-sandbox": {"auto", "pentest", "worker"},
+	"api-recon":                 defaultSkillAgentKeys,
+	"authorized-pentest-router": defaultSkillAgentKeys,
+	"conducting-internal-network-penetration-test":   defaultSkillAgentKeys,
+	"conducting-cloud-penetration-testing":           defaultSkillAgentKeys,
+	"conducting-mobile-app-penetration-test":         defaultSkillAgentKeys,
+	"conducting-social-engineering-penetration-test": defaultSkillAgentKeys,
+	"authorized-red-team-operations":                 defaultSkillAgentKeys,
+	"application-security-testing":                   defaultSkillAgentKeys,
+	"web-app-penetration-testing":                    defaultSkillAgentKeys,
+	"api-security-testing":                           defaultSkillAgentKeys,
+	"owasp-top-10-testing":                           defaultSkillAgentKeys,
+	"find-security-vulnerabilities-in-code":          defaultSkillAgentKeys,
+	"reverse-engineering-router":                     defaultSkillAgentKeys,
+	"analyzing-android-malware-with-apktool":         defaultSkillAgentKeys,
+	"analyzing-linux-elf-malware":                    defaultSkillAgentKeys,
+	"analyzing-golang-malware-with-ghidra":           defaultSkillAgentKeys,
+	"analyzing-packed-malware-with-upx-unpacker":     defaultSkillAgentKeys,
+	"deobfuscating-javascript-malware":               defaultSkillAgentKeys,
+	"analyzing-uefi-bootkit-persistence":             defaultSkillAgentKeys,
+	"analyzing-network-traffic-of-malware":           defaultSkillAgentKeys,
+	"analyzing-malware-behavior-with-cuckoo-sandbox": defaultSkillAgentKeys,
+	"playwright-cli":                                 defaultSkillAgentKeys,
+	"scopesentry":                                    defaultSkillAgentKeys,
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default
@@ -350,13 +353,8 @@ var builtinSkillVisibility = map[string][]string{
 // never resurrected on restart — matches the browser-MCP / intercept-rule seed policy.
 func (d *DB) seedBuiltinSkillVisibility() error {
 	for skillName, agentKeys := range builtinSkillVisibility {
-		for _, key := range agentKeys {
-			if _, err := d.Exec(`
-INSERT INTO agent_skill_visibility(agent_id, skill_name, enabled)
-SELECT id, $2, true FROM agents WHERE key=$1
-ON CONFLICT (agent_id, skill_name) DO NOTHING`, key, skillName); err != nil {
-				return fmt.Errorf("skill %s → agent %s: %w", skillName, key, err)
-			}
+		if err := d.seedSkillVisibility(skillName, agentKeys); err != nil {
+			return fmt.Errorf("skill %s: %w", skillName, err)
 		}
 	}
 	return nil

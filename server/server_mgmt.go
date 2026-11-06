@@ -1459,6 +1459,15 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "安装失败："+err.Error())
 		return
 	}
+	if s.m.pg == nil {
+		writeErr(w, 503, "Skill 已上传，但数据库不可用，默认授权未完成")
+		return
+	}
+	if err := s.m.pg.SeedDefaultSkillVisibility(name); err != nil {
+		log.Printf("[skills] 默认授权 %s 失败: %v", name, err)
+		writeErr(w, 500, "Skill 已上传，但默认授权失败；请在技能详情中手动授权")
+		return
+	}
 	writeJSON(w, 201, map[string]any{"name": name, "files": entries})
 }
 
