@@ -1,3 +1,8 @@
+> **`main` 分支说明**
+> 本分支是独立的安全维护备份，只接受漏洞修复，不合入整合、优化或功能开发。
+> 日常开发请使用 `artex-iteration-dev`，完成后合入 `artex-iteration`。
+> 如需将 `main` 上的漏洞修复纳入整合版，应单独 cherry-pick；不得将整合分支合入 `main`。
+
 <div align="center">
 
 # ARTEX
