@@ -2,7 +2,9 @@
 
 ## 分支与提交
 
-- 日常开发基于 `artex-iteration`；面向稳定版本的改动通过 Pull Request 合入 `main`。
+- 日常开发基于 `artex-iteration-dev`；完成并通过检查后，以 Pull Request 合入 `artex-iteration`。
+- `main` 是独立的安全维护备份，只接收漏洞修复；不得将整合分支或开发分支合入 `main`。
+- 如需把 `main` 上的漏洞修复带入整合版，单独 cherry-pick 到 `artex-iteration-dev`，检查后再合入 `artex-iteration`。
 - 提交信息使用 `<type>(<scope>): <简体中文主题>`，类型和范围遵循仓库 `CLAUDE.md`。
 - 不提交本地配置、凭据、运行数据或构建产物。
 

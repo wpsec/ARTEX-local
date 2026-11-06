@@ -12,7 +12,8 @@
 
 ## Git 与工作区
 
-- 默认在 `artex-iteration` 分支开发，保持 `main` 不变。开始前检查当前分支和工作区，保留已有未提交修改，不覆盖或丢弃他人的工作。
+- 分支模型：`main` 是独立安全维护备份，只接收漏洞修复；`artex-iteration` 是活跃整合分支；日常开发在 `artex-iteration-dev`，完成并通过检查后合入 `artex-iteration`。不得把整合分支或开发分支合入 `main`。若安全修复需要进入整合版，单独 cherry-pick 到开发线后再合入 `artex-iteration`。
+- 开始工作前检查当前分支和工作区，保留已有未提交修改，不覆盖或丢弃他人的工作。
 - 未经用户明确要求，不执行 `git push` 或其他远程同步操作。
 - 只有用户明确要求提交时才执行 `git commit`。提交信息遵循 `<type>(<scope>): <简体中文主题>`；类型使用 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore` 或 `revert`，范围使用 `core`、`api`、`ui`、`docker`、`k8s`、`security`、`scripts` 或 `config`。
 - 执行删除、重置、清理工作区等不可逆或破坏性操作前，先说明影响并等待用户二次确认。

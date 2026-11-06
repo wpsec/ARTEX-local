@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, artex-iteration]
+    branches: [main, artex-iteration, artex-iteration-dev]
   pull_request:
-    branches: [main, artex-iteration]
+    branches: [main, artex-iteration, artex-iteration-dev]
   workflow_dispatch:
 
 permissions:

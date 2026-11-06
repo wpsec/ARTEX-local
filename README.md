@@ -1,3 +1,9 @@
+> **分支维护约定**
+> - `main` 是独立的安全维护备份，只接受漏洞修复，不合入整合、优化或功能开发。
+> - `artex-iteration` 是活跃整合分支，后续产品改进以它为集成目标。
+> - `artex-iteration-dev` 用于日常开发；开发完成并通过检查后合入 `artex-iteration`。
+> - 若 `main` 上的安全修复也要进入整合版，应单独 cherry-pick 到开发线再合入；不把 `artex-iteration` 或开发分支合入 `main`。
+
 <div align="center">
 
 # ARTEX

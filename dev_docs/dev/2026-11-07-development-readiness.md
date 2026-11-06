@@ -27,7 +27,7 @@
 
 ## 仓库管理员待配置
 
-当前变更只包含仓库文件，尚未修改 GitHub 远端设置。启用 [GitHub 仓库设置清单](github-repository-settings.md) 后，`main` 才会强制要求 Pull Request 和 CI 通过。
+当前变更只包含仓库文件，尚未修改 GitHub 远端设置。启用 [GitHub 仓库设置清单](github-repository-settings.md) 后，`main` 的安全修复和 `artex-iteration` 的整合都应强制要求 Pull Request 与 CI 通过；CI 同时覆盖 `artex-iteration-dev`。
 
 ## 后续建议
 

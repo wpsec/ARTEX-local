@@ -1,0 +1,18 @@
+# 分支模型
+
+## 分支职责
+
+- `main`：独立安全维护备份，只接收漏洞修复；不合入整合、优化或功能开发。
+- `artex-iteration`：活跃整合分支，承接已完成的产品改进。
+- `artex-iteration-dev`：日常开发分支。任务完成并通过所需检查后，合入 `artex-iteration`。
+
+## 合并与安全修复
+
+- 日常功能、优化和衍生项目整合都从 `artex-iteration-dev` 进入 `artex-iteration`。
+- 不将 `artex-iteration` 或 `artex-iteration-dev` 合入 `main`，保持 `main` 独立。
+- `main` 上的漏洞修复如需进入整合版，应单独 cherry-pick 到 `artex-iteration-dev`，检查后再合入 `artex-iteration`。这能让两个分支保留独立历史，同时避免整合版遗漏安全修复。
+- GitHub 远端保护规则需要管理员另行配置；CI 工作流已覆盖上述三个分支。
+
+## 当前工作区迁移
+
+本记录建立时，`artex-iteration-dev` 从 `artex-iteration` 当前提交创建；工作区中未提交的修复保留在开发分支，尚未合入 `artex-iteration`。
