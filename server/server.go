@@ -2082,6 +2082,18 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	assets := s.resolveAssetIDs(f.AssetIDs)
 	dto := findingFromDB(f, assets)
+	if f.TaskID != nil {
+		delivery, err := s.m.pg.GetFindingDeliveryReport(*f.TaskID, f.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		if delivery != nil && delivery.Exists {
+			dto.DeliveryReport = delivery.Content
+			dto.DeliveryReportCVSSVector = delivery.CVSSVector
+			dto.DeliveryReportStale = delivery.EvidenceVersion != delivery.CurrentEvidenceVersion
+		}
+	}
 	if contextTaskID := strings.TrimSpace(r.URL.Query().Get("context_task")); contextTaskID != "" {
 		contextTask := s.m.ResolveTask(contextTaskID)
 		if contextTask == nil {

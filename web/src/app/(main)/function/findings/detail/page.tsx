@@ -25,6 +25,7 @@ import { api } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
+import { DeliveryReportSection } from "./_components/delivery-report-section";
 import { FindingLineageView } from "./lineage";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
@@ -213,6 +214,12 @@ function FindingDetailInner() {
                   )}
                 </CardContent>
               </Card>
+              <DeliveryReportSection
+                content={finding.delivery_report}
+                cvssVector={finding.delivery_report_cvss_vector}
+                stale={finding.delivery_report_stale}
+                hasDetailedReport={Boolean(finding.report)}
+              />
             </div>
 
             {/* 右栏：状态区 */}

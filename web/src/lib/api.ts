@@ -38,8 +38,6 @@ import type {
   Finding,
   FindingAssetTree,
   FindingDeepenResponse,
-  FindingDeliveryDraft,
-  FindingDeliveryReport,
   FindingGroupsPage,
   FindingQuery,
   FindingRetest,
@@ -604,24 +602,6 @@ export const api = {
   getFinding: (id: string, contextTaskId?: string) =>
     get<Finding>(
       `/exploration/findings/${id}${contextTaskId ? `?context_task=${encodeURIComponent(contextTaskId)}` : ""}`,
-    ),
-  findingDeliveryReport: (taskId: string, findingId: string) =>
-    get<FindingDeliveryReport>(
-      `/tasks/${encodeURIComponent(taskId)}/findings/${encodeURIComponent(findingId)}/delivery-report`,
-    ),
-  generateFindingDeliveryReport: (taskId: string, findingId: string) =>
-    post<FindingDeliveryDraft>(
-      `/tasks/${encodeURIComponent(taskId)}/findings/${encodeURIComponent(findingId)}/delivery-report/generate`,
-      {},
-    ),
-  saveFindingDeliveryReport: (
-    taskId: string,
-    findingId: string,
-    input: Pick<FindingDeliveryReport, "content" | "cvss_vector" | "evidence_version">,
-  ) =>
-    put<FindingDeliveryReport>(
-      `/tasks/${encodeURIComponent(taskId)}/findings/${encodeURIComponent(findingId)}/delivery-report`,
-      input,
     ),
   findingTraffic: (id: string, contextTask?: string) =>
     get<FindingTraffic>(

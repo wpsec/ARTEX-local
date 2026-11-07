@@ -1,0 +1,34 @@
+# 单漏洞交付报告
+
+## 目标
+
+交付报告属于单个漏洞详情，紧跟在该漏洞的“详细报告”下方。它面向开发修复，使用 Markdown，并支持复制。用户不需要在任务级报告页选择漏洞，也不需要单独生成或编辑交付报告。
+
+## 生成与展示
+
+- `reporter` Agent 在详细报告流程中，基于同一份漏洞证据同时撰写详细报告和交付报告，并通过一次 `update_finding_report` 调用保存。
+- 交付报告包含漏洞名称、CVSS 4.0 Base 向量、评分与等级、漏洞描述、修复建议、测试过程、攻击链路、发现路径、Burp 复测请求和返回包。
+- CVSS Base 向量由 AI 根据证据给出。界面使用本地 CVSS 4.0 Base 实现计算评分和等级，不提供人工编辑入口。
+- 修复建议只描述证据支持的必要改动及其解决的问题，不给无依据的工期或成本估算。
+- 报告只引用已绑定的真实 HTTP 请求和响应，并按原文保留；没有可用报文时明确说明未采集，不编造内容。
+- 漏洞详情页在详细报告下方展示交付报告，并提供复制按钮。证据版本变化时提示报告可能过期。
+- `finding_delivery_reports` 继续保存交付报告和 CVSS 向量；详细报告保存在 `findings.report`。数据库写入在同一事务内完成。
+- 任务归档包继续包含交付报告，恢复时一并还原。
+
+## API 与工具
+
+- `GET /api/exploration/findings/{id}` 在详情响应中返回 `delivery_report`、`delivery_report_cvss_vector` 和 `delivery_report_stale`。
+- `update_finding_report` 接收详细报告、交付报告、CVSS 4.0 Base 向量和证据版本，一次性保存两份报告。
+- 旧任务级交付报告 API 为兼容保留；当前界面不调用单独生成、保存或漏洞选择接口。
+
+## 历史数据
+
+升级前已经完成的详细报告不会自动补写交付报告。该漏洞详情会明确提示这一情况；后续新登记漏洞由 `reporter` Agent 同时生成两份报告。
+
+已有 `reporter` Agent 仅在当前提示词与旧版内置默认完全一致时切换到新默认，旧版本保留在提示词历史中。用户编辑过的提示词不会被迁移覆盖。
+
+## CVSS 计算
+
+`web/src/lib/cvss-v4.ts` 使用 CVSS 4.0 Base 宏向量表和评分方法；BSD-2-Clause 版权与许可文本随前端静态资源发布，见 `web/public/third-party-notices.txt`。界面按 AI 返回的完整 Base 向量计算评分和等级，并标为 CVSS-B。
+
+评分回归记录了一个上游资料差异：FIRST 示例页将 `AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N` 的 Base 分标为 8.2；FIRST 公开参考源码中的宏向量查表和插值算法得出 9.2。当前实现遵循参考源码。

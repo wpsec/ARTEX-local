@@ -11,8 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/utils";
 
-import { DeliveryReportCard } from "./delivery-report-card";
-
 export function ReportTab({ taskId }: { taskId: string }) {
   const [report, setReport] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
@@ -89,7 +87,6 @@ export function ReportTab({ taskId }: { taskId: string }) {
         </CardHeader>
         <CardContent>{content}</CardContent>
       </Card>
-      <DeliveryReportCard key={taskId} taskId={taskId} />
     </div>
   );
 }

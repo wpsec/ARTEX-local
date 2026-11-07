@@ -64,3 +64,39 @@ evidence_version=EXCLUDED.evidence_version, updated_at=now()`,
 	}
 	return tx.Commit()
 }
+
+func (d *DB) SetFindingReportsByNodeID(ctx context.Context, nodeID int64, report, deliveryReport, vector string, evidenceVersion int64) (n int64, err error) {
+	err = d.WithEvidenceTx(ctx, func(tx *sql.Tx) error {
+		var findingID int64
+		var taskID sql.NullInt64
+		if err := tx.QueryRow(`SELECT id,task_id FROM findings WHERE node_id=$1`, nodeID).Scan(&findingID, &taskID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+		if !taskID.Valid {
+			return errors.New("漏洞没有任务归属，无法保存交付报告")
+		}
+		if err := LockFindingEvidenceTx(tx, findingID, &evidenceVersion); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE findings SET report=$2,report_evidence_version=$3 WHERE id=$1`, findingID, report, evidenceVersion)
+		if err != nil {
+			return err
+		}
+		n, err = res.RowsAffected()
+		if err != nil || n == 0 {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO finding_delivery_reports
+	(task_id,finding_id,content,cvss_vector,evidence_version)
+VALUES($1,$2,$3,$4,$5)
+ON CONFLICT(task_id,finding_id) DO UPDATE SET
+	content=EXCLUDED.content, cvss_vector=EXCLUDED.cvss_vector,
+	evidence_version=EXCLUDED.evidence_version, updated_at=now()`,
+			taskID.Int64, findingID, deliveryReport, vector, evidenceVersion)
+		return err
+	})
+	return n, err
+}
