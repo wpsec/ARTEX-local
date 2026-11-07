@@ -72,7 +72,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 本项目是 ARTEX 的独立衍生版本，基于原项目停止维护前的源码继续开发；版本检查和发布物均由当前仓库维护。当前项目尚未发布容器镜像或预编译 Release 时，可按下列步骤从本地源码构建。首次构建仍需联网下载 Docker 基础镜像及 Debian、Node.js、npm 和 Playwright 依赖。
 
-需要 macOS 或 Linux、Go 1.26.3+、Node.js/npm、rsync、Docker Engine 和 Docker Compose。
+需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync、Docker Engine 和 Docker Compose。
 
 ### 1. 配置数据库
 

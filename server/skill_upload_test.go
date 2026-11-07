@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
@@ -102,8 +103,33 @@ func buildZip(t *testing.T, files ...zipFile) []byte {
 	return buf.Bytes()
 }
 
-// uploadZip posts raw zip bytes to fsUploadSkill and returns the response.
+// uploadZip posts raw zip bytes without a database; rejection paths remain testable
+// without starting the PostgreSQL-backed manager.
 func uploadZip(t *testing.T, skillDir string, filename string, data []byte) (*httptest.ResponseRecorder, map[string]any) {
+	return uploadZipToServer(t, &Server{skillDir: skillDir}, filename, data)
+}
+
+func uploadZipWithManager(t *testing.T, skillDir string, skillName string, filename string, data []byte) (*httptest.ResponseRecorder, map[string]any) {
+	t.Helper()
+	m, err := NewManager(t.TempDir(), "")
+	if err != nil {
+		t.Skipf("database unavailable (%v) — skipping successful upload test", err)
+	}
+	t.Cleanup(func() {
+		if err := m.Close(); err != nil {
+			t.Errorf("close manager: %v", err)
+		}
+	})
+	// A unique name keeps this cleanup from touching existing user authorization.
+	t.Cleanup(func() {
+		if err := m.pg.DeleteSkillVisibility(skillName); err != nil {
+			t.Errorf("remove test skill visibility: %v", err)
+		}
+	})
+	return uploadZipToServer(t, &Server{m: m, skillDir: skillDir}, filename, data)
+}
+
+func uploadZipToServer(t *testing.T, s *Server, filename string, data []byte) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
@@ -119,33 +145,36 @@ func uploadZip(t *testing.T, skillDir string, filename string, data []byte) (*ht
 	req := httptest.NewRequest(http.MethodPost, "/api/skills/upload", &body)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	rr := httptest.NewRecorder()
-	(&Server{skillDir: skillDir}).fsUploadSkill(rr, req)
+	s.fsUploadSkill(rr, req)
 
 	var out map[string]any
 	_ = json.Unmarshal(rr.Body.Bytes(), &out)
 	return rr, out
 }
 
-const zhSkillMD = "---\nname: 中文技能\ndescription: 测试\n---\n正文\n"
+func zhSkillMD(skillName string) string {
+	return "---\nname: " + skillName + "\ndescription: 测试\n---\n正文\n"
+}
 
 // A zstd-compressed archive (WinZip 的可选压缩方式) used to blow up with
 // "zip: unsupported compression"; it now installs like any Deflate archive.
 func TestUploadSkillZstdAndChineseNames(t *testing.T) {
 	dir := t.TempDir()
+	skillName := "中文技能-" + uuid.NewString()
 	data := buildZip(t,
-		zipFile{name: "中文技能/SKILL.md", body: zhSkillMD, method: zipMethodZstd},
-		zipFile{name: "中文技能/参考/说明 文档.md", body: "参考", method: zipMethodZstd},
-		zipFile{name: "中文技能/scripts/run.py", body: "print(1)", method: zip.Deflate},
+		zipFile{name: skillName + "/SKILL.md", body: zhSkillMD(skillName), method: zipMethodZstd},
+		zipFile{name: skillName + "/参考/说明 文档.md", body: "参考", method: zipMethodZstd},
+		zipFile{name: skillName + "/scripts/run.py", body: "print(1)", method: zip.Deflate},
 	)
-	rr, out := uploadZip(t, dir, "中文技能.zip", data)
+	rr, out := uploadZipWithManager(t, dir, skillName, skillName+".zip", data)
 	if rr.Code != 201 {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
 	}
-	if out["name"] != "中文技能" {
-		t.Fatalf("name = %v, want 中文技能", out["name"])
+	if out["name"] != skillName {
+		t.Fatalf("name = %v, want %s", out["name"], skillName)
 	}
 	for _, rel := range []string{"SKILL.md", "参考/说明 文档.md", "scripts/run.py"} {
-		if _, err := os.Stat(filepath.Join(dir, "中文技能", rel)); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, skillName, rel)); err != nil {
 			t.Errorf("missing extracted file %q: %v", rel, err)
 		}
 	}
@@ -162,19 +191,37 @@ func TestUploadSkillGBKNames(t *testing.T) {
 		return b
 	}
 	dir := t.TempDir()
+	skillName := "中文技能-" + uuid.NewString()
 	data := buildZip(t,
-		zipFile{name: gbk("中文技能/SKILL.md"), body: zhSkillMD, method: zip.Deflate, nonUTF8: true},
-		zipFile{name: gbk("中文技能/参考资料.md"), body: "内容", method: zip.Deflate, nonUTF8: true},
+		zipFile{name: gbk(skillName + "/SKILL.md"), body: zhSkillMD(skillName), method: zip.Deflate, nonUTF8: true},
+		zipFile{name: gbk(skillName + "/参考资料.md"), body: "内容", method: zip.Deflate, nonUTF8: true},
 	)
-	rr, out := uploadZip(t, dir, "skill.zip", data)
+	rr, out := uploadZipWithManager(t, dir, skillName, "skill.zip", data)
 	if rr.Code != 201 {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body)
 	}
-	if out["name"] != "中文技能" {
-		t.Fatalf("name = %v, want 中文技能", out["name"])
+	if out["name"] != skillName {
+		t.Fatalf("name = %v, want %s", out["name"], skillName)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "中文技能", "参考资料.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, skillName, "参考资料.md")); err != nil {
 		t.Errorf("GBK-named entry not extracted: %v", err)
+	}
+}
+
+func TestUploadSkillWithoutManagerReturnsServiceUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	data := buildZip(t,
+		zipFile{name: "demo/SKILL.md", body: "---\nname: demo\n---\n", method: zip.Deflate},
+	)
+	rr, out := uploadZip(t, dir, "demo.zip", data)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d (body %s)", rr.Code, http.StatusServiceUnavailable, rr.Body)
+	}
+	if msg, _ := out["error"].(string); !strings.Contains(msg, "默认授权未完成") {
+		t.Fatalf("error = %q, want database-unavailable message", msg)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo", "SKILL.md")); err != nil {
+		t.Fatalf("skill file should remain installed after database failure: %v", err)
 	}
 }
 
