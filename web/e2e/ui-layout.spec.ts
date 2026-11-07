@@ -94,7 +94,7 @@ test("task operation controls remain within the sticky action column", async ({ 
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
-  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.setViewportSize({ width: 734, height: 900 });
   await page.goto("/function/tasks");
 
   const row = page.getByRole("row", { name: /CI layout task/ });
@@ -123,9 +123,20 @@ test("task operation controls remain within the sticky action column", async ({ 
   expect(scroll.scrollWidth).toBeGreaterThan(scroll.clientWidth);
   expect(scroll.after).toBeGreaterThan(scroll.before);
 
+  await actionCell.hover();
+  const hoverBackgroundAlpha = await actionCell.evaluate((cell) => {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas 2D context is unavailable");
+    context.fillStyle = getComputedStyle(cell).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return context.getImageData(0, 0, 1, 1).data[3];
+  });
+  expect(hoverBackgroundAlpha).toBe(255);
+
   const afterScroll = await actionCell.boundingBox();
   if (!afterScroll) throw new Error("Task action cell has no bounding box after scrolling");
-  expect(Math.abs(afterScroll.right - beforeScroll.right)).toBeLessThanOrEqual(1);
+  expect(Math.abs(afterScroll.x + afterScroll.width - (beforeScroll.x + beforeScroll.width))).toBeLessThanOrEqual(1);
 
   const layout = await actionCell.evaluate((cell) => {
     const cellBounds = cell.getBoundingClientRect();

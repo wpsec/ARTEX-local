@@ -816,6 +816,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/notify/deliveries/{id}/retry", s.notifyRetryDelivery)
 	mux.HandleFunc("POST /api/settings/web-search/test", s.testWebSearch)
 	mux.HandleFunc("GET /api/report", s.getReport)
+	mux.HandleFunc("GET /api/tasks/{id}/findings/{finding_id}/delivery-report", s.getFindingDeliveryReport)
+	mux.HandleFunc("PUT /api/tasks/{id}/findings/{finding_id}/delivery-report", s.saveFindingDeliveryReport)
+	mux.HandleFunc("POST /api/tasks/{id}/findings/{finding_id}/delivery-report/generate", s.generateFindingDeliveryReport)
 	mux.HandleFunc("GET /api/chat/mentions", s.searchChatMentions)
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // 方式1 文件上传:落到会话/任务工作目录 uploads/

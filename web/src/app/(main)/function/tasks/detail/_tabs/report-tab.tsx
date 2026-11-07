@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/utils";
 
+import { DeliveryReportCard } from "./delivery-report-card";
+
 export function ReportTab({ taskId }: { taskId: string }) {
   const [report, setReport] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
@@ -71,20 +73,23 @@ export function ReportTab({ taskId }: { taskId: string }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <FileTextIcon className="size-4" /> 渗透测试报告（Markdown）
-        </CardTitle>
-        <div className="flex gap-2">
-          {report && (
-            <Button size="sm" variant="outline" onClick={copy}>
-              {copied ? <CheckIcon /> : <CopyIcon />} 复制
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>{content}</CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <FileTextIcon className="size-4" /> 渗透测试报告（Markdown）
+          </CardTitle>
+          <div className="flex gap-2">
+            {report && (
+              <Button size="sm" variant="outline" onClick={copy}>
+                {copied ? <CheckIcon /> : <CopyIcon />} 复制
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>{content}</CardContent>
+      </Card>
+      <DeliveryReportCard key={taskId} taskId={taskId} />
+    </div>
   );
 }

@@ -512,6 +512,29 @@ export interface Finding {
   ts: string;
 }
 
+export interface FindingDeliveryReport {
+  task_id: string;
+  finding_id: string;
+  content: string;
+  cvss_vector: string;
+  evidence_version: number;
+  current_evidence_version: number;
+  exists: boolean;
+  updated_at?: string;
+}
+
+export interface FindingDeliveryDraft {
+  cvss_vector: string;
+  description: string;
+  remediation: string;
+  test_process: string;
+  attack_chain: string;
+  discovery_path: string;
+  request_packet: string;
+  response_packet: string;
+  evidence_version: number;
+}
+
 // FindingsPage 是发现列表的服务端分页响应。
 export interface FindingsPage {
   items: Finding[];

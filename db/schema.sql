@@ -1144,6 +1144,18 @@ CREATE TRIGGER trg_conversation_retest_delete BEFORE DELETE ON conversations
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_version BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS report_evidence_version BIGINT NOT NULL DEFAULT 0;
 
+-- 一份任务交付报告对应一个任务上下文和一个漏洞；继承漏洞在各任务中独立留档。
+CREATE TABLE IF NOT EXISTS finding_delivery_reports (
+    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    finding_id BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    cvss_vector TEXT NOT NULL,
+    evidence_version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(task_id, finding_id)
+);
+
 CREATE TABLE IF NOT EXISTS traffic_evidence_snapshots (
     id TEXT PRIMARY KEY,
     source_traffic_id TEXT NOT NULL,

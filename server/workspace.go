@@ -99,7 +99,13 @@ func (s *Server) wsList(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "不是目录")
 		return
 	}
-	ents, err := root.ReadDir(rel)
+	dir, err := root.Open(rel)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer closeWorkspaceFile(dir)
+	ents, err := dir.ReadDir(-1)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
