@@ -188,6 +188,11 @@ func (s *Store) Record(ctx context.Context, in db.RecordFindingInput, refs []db.
 		if err != nil {
 			return err
 		}
+		bindings := make([]db.FindingTrafficBinding, 0, len(prepared))
+		for i, item := range prepared {
+			bindings = append(bindings, db.FindingTrafficBinding{SnapshotID: item.Snapshot.ID, Role: item.Ref.Role, Position: i, Snapshot: item.Snapshot})
+		}
+		in.EvidenceQuotes, in.EvidenceCheckStatus, in.EvidenceCheckNote = s.checkEvidenceQuotes(ctx, in.EvidenceQuotes, bindings)
 		out, err = db.RecordFindingTx(ctx, tx, in, prepared)
 		return err
 	})
@@ -209,6 +214,11 @@ func (s *Store) Bind(ctx context.Context, findingID int64, refs []db.TrafficRef)
 		out, err = db.FindingTrafficTx(tx, findingID)
 		return err
 	})
+	if err == nil {
+		if checkErr := s.RecheckFindingEvidence(ctx, findingID); checkErr != nil {
+			log.Printf("[evidence] recheck finding %d after binding: %v", findingID, checkErr)
+		}
+	}
 	return
 }
 

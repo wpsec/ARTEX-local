@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/Autumn-27/norma/llm"
+	"github.com/wpsec/ARTEX-local/agent"
 	"github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/guard"
 	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/wpsec/ARTEX-local/llmrec"
-	"github.com/Autumn-27/norma/llm"
 )
 
 // judgeWorkerLane is the usage-ledger "worker" label for intercept fallback-judge
@@ -42,14 +44,14 @@ func (s *Server) wireInterceptReviewer() {
 		if profileID == 0 {
 			return intercept.Decision{}, fmt.Errorf("未配置可用的裁判模型")
 		}
-		prov, _, ok := s.providerForProfile(profileID)
+		prov, cfg, ok := s.providerForProfile(profileID)
 		if !ok {
 			return intercept.Decision{ProfileID: profileID}, fmt.Errorf("裁判模型 profile %d 不可用", profileID)
 		}
 		// Tag this call's usage as the "judge" lane so the config page can report
 		// how much the fallback approval has spent, separate from model profiles.
 		ctx = llmrec.WithWorker(ctx, judgeWorkerLane)
-		text, err := reviewCompletion(ctx, prov, prompt, input)
+		text, err := reviewCompletionWithRetry(ctx, prov, prompt, input, cfg.Retry)
 		if err != nil {
 			return intercept.Decision{ProfileID: profileID}, err
 		}
@@ -67,6 +69,24 @@ func reviewCompletion(ctx context.Context, prov llm.Provider, prompt string, inp
 		return "", err
 	}
 	return streamCollectText(ctx, prov, prompt, string(user))
+}
+
+func reviewCompletionWithRetry(ctx context.Context, prov llm.Provider, prompt string, input intercept.ReviewInput, policy agent.RetryConfig) (string, error) {
+	retries, backoffOf := sameProviderRetryPolicy(policy)
+	if retries > 1 {
+		retries = 1
+	}
+	for attempt := 0; ; attempt++ {
+		text, err := reviewCompletion(ctx, prov, prompt, input)
+		if err == nil || ctx.Err() != nil || attempt >= retries || !isRetryableStreamError(err) {
+			return text, err
+		}
+		backoff := backoffOf(attempt)
+		log.Printf("[judge] 审批模型调用失败，%v 后进行有界重试: %v", backoff, err)
+		if sleepCtx(ctx, backoff) {
+			return "", ctx.Err()
+		}
+	}
 }
 
 // streamCollectText runs a single non-streaming-style completion (thinking off,

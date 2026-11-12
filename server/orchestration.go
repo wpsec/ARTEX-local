@@ -425,6 +425,8 @@ func (s *Server) toolGetTaskNodeDetail() actool.CoreTool {
 // finding node id). The write (SetFindingReportByNodeID) is keyed by node_id and
 // task-agnostic, so this host tool needs no task_id / exploration store.
 func (s *Server) toolUpdateFindingReport() actool.CoreTool {
+	evidenceQuotes := agent.EvidenceQuotesSchema()
+	evidenceQuotes["description"] = "可选的逐字原文引用；traffic_id 必须是已绑定到该漏洞的真实流量 ID。只核对 proof/verification 的 HTTP 请求或响应正文，不代表漏洞已确认。"
 	return wrTool("update_finding_report",
 		"为已登记的漏洞一次写入/更新【详细报告】和【交付报告】(均为 Markdown,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。交付报告面向开发修复，按必要性和证据给出简洁、可复测的内容；cvss_vector 提供完整 CVSS 4.0 Base 向量。",
 		objSchema(map[string]any{
@@ -433,16 +435,23 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			"delivery_report":  strParam("与详细报告同次撰写的开发交付报告全文,Markdown 格式"),
 			"cvss_vector":      strParam("AI 根据证据给出的完整 CVSS 4.0 Base 向量，按 AV/AC/AT/PR/UI/VC/VI/VA/SC/SI/SA 顺序"),
 			"evidence_version": map[string]any{"type": "integer", "description": "get_finding_traffic 返回的证据 version；用于防止报告覆盖新的证据变更"},
+			"evidence_quotes":  evidenceQuotes,
+			"counterevidence":  map[string]any{"type": "string", "description": "可选：尝试过但未成立的路径、反例或与结论冲突的观察"},
 		}, "finding_id", "report", "delivery_report", "cvss_vector", "evidence_version"),
 		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {
-				EvidenceVersion *int64          `json:"evidence_version"`
-				FindingID       json.RawMessage `json:"finding_id"`
-				Report          string          `json:"report"`
-				DeliveryReport  string          `json:"delivery_report"`
-				CVSSVector      string          `json:"cvss_vector"`
+				EvidenceVersion *int64                     `json:"evidence_version"`
+				FindingID       json.RawMessage            `json:"finding_id"`
+				Report          string                     `json:"report"`
+				DeliveryReport  string                     `json:"delivery_report"`
+				CVSSVector      string                     `json:"cvss_vector"`
+				EvidenceQuotes  *[]db.FindingEvidenceQuote `json:"evidence_quotes"`
+				Counterevidence *string                    `json:"counterevidence"`
 			}
 			_ = json.Unmarshal(in, &a)
+			if !agent.IsFindingTrafficBindingEnabled() {
+				a.EvidenceQuotes = nil
+			}
 			nodeID := parseProfileID(a.FindingID) // 复用「数字或数字字符串」解析
 			if nodeID <= 0 {
 				return actool.Errorf("finding_id 无效"), nil
@@ -466,6 +475,15 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 			}
 			if n == 0 {
 				return actool.Errorf(fmt.Sprintf("未找到 finding_id=%d 对应的漏洞记录(先用 report_finding 登记)", nodeID)), nil
+			}
+			if a.EvidenceQuotes != nil || a.Counterevidence != nil {
+				findingID, findErr := s.m.pg.FindingIDByNodeID(nodeID)
+				if findErr != nil {
+					return actool.Errorf(findErr.Error()), nil
+				}
+				if err := s.evidenceStore().UpdateFindingEvidence(ctx, findingID, a.EvidenceQuotes, a.Counterevidence); err != nil {
+					return actool.Errorf(err.Error()), nil
+				}
 			}
 			if a.DeliveryReport != "" {
 				return actool.Text(fmt.Sprintf("finding %d reports updated (detailed %d chars, delivery %d chars)", nodeID, len(a.Report), len(a.DeliveryReport))), nil

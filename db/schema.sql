@@ -359,6 +359,14 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Preserve the old fail-open behavior only for installations that had already
+-- enabled Judge before the default changed. New or previously disabled instances
+-- receive the safer ask default from the application.
+INSERT INTO settings(key, value)
+SELECT 'llm_judge_fail_action', 'allow'
+WHERE EXISTS (SELECT 1 FROM settings WHERE key='llm_judge_enabled' AND value='true')
+ON CONFLICT (key) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS llm_profiles (
     id               BIGSERIAL PRIMARY KEY,
     name             TEXT NOT NULL UNIQUE,
@@ -1098,11 +1106,20 @@ CREATE TABLE IF NOT EXISTS findings (
     status      TEXT NOT NULL DEFAULT 'pending',
     -- 漏洞详细报告(Markdown)；默认空,仅详情页读取/展示,不进列表接口以免 payload 膨胀。
     report      TEXT NOT NULL DEFAULT '',
+    -- 引用匹配结果只描述证据是否可定位，不代表漏洞已确认。
+    evidence_check_status TEXT NOT NULL DEFAULT 'not_assessed',
+    evidence_check_note TEXT NOT NULL DEFAULT '',
+    evidence_quotes JSONB NOT NULL DEFAULT '[]',
+    counterevidence TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS name   TEXT NOT NULL DEFAULT '';
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS report TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_check_status TEXT NOT NULL DEFAULT 'not_assessed';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_check_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_quotes JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS counterevidence TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_findings_task ON findings(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_findings_time ON findings(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status, created_at DESC);

@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"unicode/utf8"
 
+	actool "github.com/Autumn-27/norma/tool"
 	"github.com/wpsec/ARTEX-local/agent"
 	"github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/evidence"
-	actool "github.com/Autumn-27/norma/tool"
 )
 
 func (s *Server) evidenceStore() *evidence.Store {
@@ -27,7 +27,7 @@ func (s *Server) evidenceStore() *evidence.Store {
 // properties, agent bindings and disabled flags. The one-time flag also keeps
 // subsequent user unbinding of the evidence reader intact.
 func (s *Server) seedFindingTrafficTools() {
-	const flag = "finding_traffic_tools_v1"
+	const flag = "finding_evidence_quotes_v1"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
@@ -57,18 +57,20 @@ func (s *Server) seedFindingTrafficTools() {
 		if err = json.Unmarshal(obj["properties"], &properties); err != nil {
 			return
 		}
-		name := "traffic_refs"
-		if key == "update_finding_report" {
-			name = "evidence_version"
+		fields := []string{"counterevidence", "evidence_quotes"}
+		if key == "report_finding" {
+			fields = append(fields, "traffic_refs", "evidence_hint_id")
 		}
-		if len(properties[name]) == 0 {
-			return
-		}
-		_, err = s.m.pg.Exec(`UPDATE tools SET schema=jsonb_set(schema,ARRAY['properties',$2::text],$3::jsonb,true),updated_at=now()
+		for _, name := range fields {
+			if len(properties[name]) == 0 {
+				continue
+			}
+			_, err = s.m.pg.Exec(`UPDATE tools SET schema=jsonb_set(schema,ARRAY['properties',$2::text],$3::jsonb,true),updated_at=now()
 WHERE key=$1 AND system AND NOT(COALESCE(schema->'properties','{}'::jsonb) ? $2)`, key, name, string(properties[name]))
-		if err != nil {
-			log.Printf("[evidence] upgrade tool %s: %v", key, err)
-			return
+			if err != nil {
+				log.Printf("[evidence] upgrade tool %s property %s: %v", key, name, err)
+				return
+			}
 		}
 	}
 	if reporter, _ := s.m.pg.GetAgentByKey("reporter"); reporter != nil {
@@ -225,6 +227,9 @@ func (s *Server) editFindingTraffic(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		evidenceError(w, err)
 		return
+	}
+	if err := s.evidenceStore().RecheckFindingEvidence(r.Context(), id); err != nil {
+		log.Printf("[evidence] recheck finding %d after evidence edit: %v", id, err)
 	}
 	s.getFindingTraffic(w, r)
 }

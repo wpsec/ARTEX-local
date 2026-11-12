@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Autumn-27/norma/llm"
+	"github.com/Autumn-27/norma/transcript"
 	"github.com/wpsec/ARTEX-local/agent"
 	"github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/llmrec"
 	"github.com/wpsec/ARTEX-local/sidequestion"
-	"github.com/Autumn-27/norma/llm"
-	"github.com/Autumn-27/norma/transcript"
 )
 
 type sideRun struct {
@@ -174,6 +174,31 @@ func (s *Server) drainTaskSideQuestions(ctx context.Context, taskID string) erro
 	return nil
 }
 
+func (s *Server) drainConversationSideQuestions(ctx context.Context, conversationID int64) error {
+	if s.side == nil {
+		return nil
+	}
+	s.side.commands.Lock()
+	done := s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == conversationID })
+	s.side.commands.Unlock()
+	for _, ch := range done {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	s.flushSideSnapshots()
+	s.side.mu.Lock()
+	defer s.side.mu.Unlock()
+	for _, snap := range s.side.pending {
+		if snap.Parent.ConversationID == conversationID {
+			return errors.New("对话旁路上下文尚未保存，请重试")
+		}
+	}
+	return nil
+}
+
 func (s *Server) cancelWorkerSide(taskID string, expID, iid int64) {
 	if s.side == nil {
 		return
@@ -226,6 +251,13 @@ func (s *Server) sideParent(w http.ResponseWriter, r *http.Request, kind string)
 		}
 		if c == nil {
 			writeErr(w, 404, "conversation not found")
+			return p, false
+		}
+		s.chatMu.Lock()
+		deleting := s.conversationDeleting[s.convBusyKey(id)]
+		s.chatMu.Unlock()
+		if deleting {
+			writeErr(w, http.StatusConflict, "对话正在删除")
 			return p, false
 		}
 		p.ConversationID = id
@@ -290,6 +322,10 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 	if r.Method == "DELETE" {
 		s.side.commands.Lock()
 		defer s.side.commands.Unlock()
+		if s.conversationIsDeleting(p.ConversationID) {
+			writeErr(w, http.StatusConflict, "对话正在删除")
+			return
+		}
 		s.side.mu.Lock()
 		for _, run := range s.side.runs {
 			if run.key == key {
@@ -354,6 +390,10 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 	}
 	s.side.commands.Lock()
 	defer s.side.commands.Unlock()
+	if s.conversationIsDeleting(p.ConversationID) {
+		writeErr(w, http.StatusConflict, "对话正在删除")
+		return
+	}
 	if p.TaskID > 0 && s.engine.IsDeleting(strconv.FormatInt(p.TaskID, 10)) {
 		writeErr(w, 409, "任务正在归档或删除")
 		return

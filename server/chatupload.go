@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/wpsec/ARTEX-local/db"
@@ -74,6 +75,31 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.engine.decInflight(id)
 	}
+	if sub == "sessions" {
+		conversationID, ok := conversationIDFromSessionID(id)
+		if !ok {
+			writeErr(w, http.StatusBadRequest, "会话 id 无效")
+			return
+		}
+		pg := s.pg(w)
+		if pg == nil {
+			return
+		}
+		conversation, err := pg.GetConversation(conversationID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if conversation == nil {
+			writeErr(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		if !s.beginConversationFileOp(conversationID) {
+			writeErr(w, http.StatusConflict, "对话正在删除，无法上传附件")
+			return
+		}
+		defer s.endConversationFileOp(conversationID)
+	}
 	dir := filepath.Join(s.m.dir, sub, id, "uploads")
 	root, ok := openWorkspaceRoot(w, s.m.dir)
 	if !ok {
@@ -120,6 +146,17 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, 200, map[string]any{"attachments": out})
+}
+
+func conversationIDFromSessionID(id string) (int64, bool) {
+	if !strings.HasPrefix(id, "conv-") {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(strings.TrimPrefix(id, "conv-"), 10, 64)
+	if err != nil || value <= 0 || id != "conv-"+strconv.FormatInt(value, 10) {
+		return 0, false
+	}
+	return value, true
 }
 
 // uniqueUploadPath returns dir/name, or dir/name-1, dir/name-2… when it already exists,

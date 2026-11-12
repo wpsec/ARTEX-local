@@ -501,6 +501,10 @@ export interface Finding {
   status: FindingStatus;
   summary: string;
   evidence: string;
+  evidence_check_status?: "matched" | "unmatched" | "not_assessed";
+  evidence_check_note?: string;
+  evidence_quotes?: { traffic_id?: string; snapshot_id?: string; side: "request" | "response"; quote: string }[];
+  counterevidence?: string;
   report?: string; // 详细报告(Markdown);仅详情接口返回,列表为空
   delivery_report?: string;
   delivery_report_cvss_vector?: string;

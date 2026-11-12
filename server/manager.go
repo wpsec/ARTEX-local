@@ -1454,7 +1454,7 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		return result, nil
 	}
 
-	var fileStage *taskFileDeleteStage
+	var fileStage *managedFileDeleteStage
 	if opts.DeleteFiles {
 		fileStage, err = stageTaskFiles(m.dir, id, registered.ExplorationID)
 		if err != nil {
@@ -1522,7 +1522,7 @@ func (e *taskDeleteCommittedError) Error() string {
 
 func (e *taskDeleteCommittedError) Unwrap() error { return e.err }
 
-func rollbackTaskDelete(cause error, trafficStage *traffic.HostDeleteStage, fileStage *taskFileDeleteStage) error {
+func rollbackTaskDelete(cause error, trafficStage *traffic.HostDeleteStage, fileStage *managedFileDeleteStage) error {
 	errs := []error{cause}
 	// Reverse the preparation order. Both restorations are attempted even if the
 	// first one fails, and errors.Join preserves the original PostgreSQL error.
@@ -1563,14 +1563,14 @@ func (m *Manager) forgetTask(id string, numericID int64) {
 	m.mu.Unlock()
 }
 
-type stagedTaskPath struct {
+type stagedManagedPath struct {
 	source string
 	staged string
 }
 
-type taskFileDeleteStage struct {
+type managedFileDeleteStage struct {
 	stageDir string
-	moves    []stagedTaskPath
+	moves    []stagedManagedPath
 	deleted  bool
 	done     bool
 }
@@ -1578,8 +1578,7 @@ type taskFileDeleteStage struct {
 // stageTaskFiles atomically renames the task workspace, transcripts and noa
 // sidecars to a same-filesystem staging directory. The trailing dash in the
 // session prefix is significant: exploration 12 must not match exploration 123.
-func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDeleteStage, error) {
-	stage := &taskFileDeleteStage{}
+func stageTaskFiles(dataDir, taskID string, explorationID int64) (*managedFileDeleteStage, error) {
 	var targets []string
 	prefix := fmt.Sprintf("exp%d-", explorationID)
 	taskDir := filepath.Join(dataDir, "tasks", taskID)
@@ -1618,35 +1617,64 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 			targets = append(targets, filepath.Join(noaDir, entry.Name()))
 		}
 	}
+	return stageDeletePaths(dataDir, "task-"+taskID+"-", targets)
+}
+
+// stageConversationFiles collects only paths derived from the numeric conversation
+// id, so deleting one thread cannot match another thread with a similar prefix.
+func stageConversationFiles(dataDir string, conversationID int64) (*managedFileDeleteStage, error) {
+	if conversationID <= 0 {
+		return nil, errors.New("conversation id must be positive")
+	}
+	sessionID := fmt.Sprintf("conv-%d", conversationID)
+	paths := []string{
+		filepath.Join(dataDir, "transcripts", sessionID+".jsonl"),
+		filepath.Join(dataDir, "transcripts", sessionID),
+		filepath.Join(dataDir, "sessions", sessionID),
+		filepath.Join(dataDir, "noa", "chat-"+sessionID),
+	}
+	targets := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if _, err := os.Lstat(path); err == nil {
+			targets = append(targets, path)
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	return stageDeletePaths(dataDir, fmt.Sprintf("conversation-%d-", conversationID), targets)
+}
+
+func stageDeletePaths(dataDir, prefix string, targets []string) (*managedFileDeleteStage, error) {
+	stage := &managedFileDeleteStage{}
 	if len(targets) == 0 {
 		stage.done = true
 		return stage, nil
 	}
-
 	parent := filepath.Join(dataDir, ".delete-staging")
 	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return nil, err
 	}
-	stage.stageDir, err = os.MkdirTemp(parent, "task-"+taskID+"-")
+	var err error
+	stage.stageDir, err = os.MkdirTemp(parent, prefix)
 	if err != nil {
 		return nil, err
 	}
 	for _, source := range targets {
 		staged := filepath.Join(stage.stageDir, fmt.Sprintf("%d-%s", len(stage.moves), filepath.Base(source)))
 		if err := os.Rename(source, staged); err != nil {
-			cause := fmt.Errorf("stage task file %s: %w", source, err)
+			cause := fmt.Errorf("stage managed file %s: %w", source, err)
 			if restoreErr := stage.rollback(); restoreErr != nil {
-				return nil, errors.Join(cause, fmt.Errorf("restore partially staged task files: %w", restoreErr))
+				return nil, errors.Join(cause, fmt.Errorf("restore partially staged files: %w", restoreErr))
 			}
 			return nil, cause
 		}
-		stage.moves = append(stage.moves, stagedTaskPath{source: source, staged: staged})
+		stage.moves = append(stage.moves, stagedManagedPath{source: source, staged: staged})
 	}
 	stage.deleted = true
 	return stage, nil
 }
 
-func (s *taskFileDeleteStage) commit() error {
+func (s *managedFileDeleteStage) commit() error {
 	if s == nil || s.done {
 		return nil
 	}
@@ -1655,7 +1683,7 @@ func (s *taskFileDeleteStage) commit() error {
 	return err
 }
 
-func (s *taskFileDeleteStage) rollback() error {
+func (s *managedFileDeleteStage) rollback() error {
 	if s == nil || s.done {
 		return nil
 	}
@@ -1679,7 +1707,7 @@ func (s *taskFileDeleteStage) rollback() error {
 	}
 	if len(errs) == 0 && s.stageDir != "" {
 		if err := os.RemoveAll(s.stageDir); err != nil {
-			errs = append(errs, fmt.Errorf("remove task file stage: %w", err))
+			errs = append(errs, fmt.Errorf("remove managed file stage: %w", err))
 		}
 	}
 	s.done = true

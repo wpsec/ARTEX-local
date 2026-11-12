@@ -280,7 +280,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d artex
   npm run test:e2e -- e2e/mcp-presets.spec.ts
   ```
 
-- 全 Go 回归：`go test $(go list ./... | grep -v '/data/tasks/')`。本地 `data/tasks` 下忽略的历史 Go 文件不属于仓库测试包；上述命令会排除它们。2026-11-11 的历史回归曾报告 `agent.TestGraphOverviewExpandsAssociatedCompanyScope` 和 `server.TestFindingDeliveryReportIsolationAndEvidenceVersion` 失败，请以当前分支实际执行结果为准；相关复核记录见[评审索引](dev_docs/review/README.md)。
+- 全 Go 回归：`go test $(go list ./... | grep -v '/data/tasks/')`。本地 `data/tasks` 下忽略的历史 Go 文件不属于仓库测试包；上述命令会排除它们。2026-11-11 的历史回归曾报告 `agent.TestGraphOverviewExpandsAssociatedCompanyScope` 和 `server.TestFindingDeliveryReportIsolationAndEvidenceVersion` 失败，请以当前分支实际执行结果为准；相关复核记录见[评审索引](dev_docs/review/【待处理】README.md)。
 - Mock 预览（无后端）：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
 
 运行完成后移除一次性测试数据库：

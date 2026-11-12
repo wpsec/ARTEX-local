@@ -45,6 +45,17 @@ function fmtTime(ts: string) {
   return new Date(ts).toLocaleString("zh-CN");
 }
 
+function evidenceCheckLabel(status: Finding["evidence_check_status"]) {
+  switch (status) {
+    case "matched":
+      return "引用原文已匹配";
+    case "unmatched":
+      return "存在未匹配引用";
+    default:
+      return "尚未核验";
+  }
+}
+
 // FieldRow is one label/value line in the right-hand status panel.
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -132,6 +143,14 @@ function FindingDetailInner() {
   }
 
   const title = finding.name || finding.vulnclass || "未分类";
+  const evidenceQuotes = Array.from(
+    new Map(
+      (finding.evidence_quotes ?? []).map((quote) => [
+        JSON.stringify([quote.snapshot_id, quote.traffic_id, quote.side, quote.quote]),
+        quote,
+      ]),
+    ).values(),
+  );
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col gap-0">
@@ -189,6 +208,44 @@ function FindingDetailInner() {
                     </pre>
                   ) : (
                     <p className="text-sm text-muted-foreground">（无证据）</p>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">证据原文引用</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">
+                      {evidenceCheckLabel(finding.evidence_check_status)}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      原文匹配仅用于定位证据，不代表漏洞已确认。
+                    </span>
+                  </div>
+                  {finding.evidence_check_note && (
+                    <p className="text-muted-foreground text-sm">{finding.evidence_check_note}</p>
+                  )}
+                  {evidenceQuotes.map((quote) => (
+                    <div
+                      key={JSON.stringify([quote.snapshot_id, quote.traffic_id, quote.side, quote.quote])}
+                      className="space-y-1"
+                    >
+                      <p className="text-muted-foreground text-xs">
+                        {quote.side === "request" ? "请求" : "响应"}
+                        {quote.traffic_id ? ` · 流量 ${quote.traffic_id}` : ""}
+                      </p>
+                      <pre className="overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap">
+                        {quote.quote}
+                      </pre>
+                    </div>
+                  ))}
+                  {finding.counterevidence && (
+                    <div className="space-y-1 border-t pt-3">
+                      <p className="text-xs text-muted-foreground">反证与未成立路径</p>
+                      <p className="whitespace-pre-wrap text-sm">{finding.counterevidence}</p>
+                    </div>
                   )}
                 </CardContent>
               </Card>

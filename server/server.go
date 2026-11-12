@@ -64,13 +64,14 @@ type Server struct {
 	llmOn     bool
 	llmProf   string // active LLM profile name (for llmrec tagging)
 
-	// chatBusy guards the per-task main-agent run: the chat handler launches the
-	// agent on the server's background ctx (not the request ctx) and returns
-	// immediately, so a page reload / proxy timeout can't abort a live run. This
-	// map serializes turns per task — one main-agent run at a time per task, so
-	// concurrent messages don't corrupt the shared exp<id>-main transcript.
+	// chatBusy guards task main-agent and chat conversation runs. Those runs use the
+	// server's background context so a page reload or proxy timeout cannot abort a
+	// live run, and the map serializes turns that share the same transcript.
 	chatMu   sync.Mutex
 	chatBusy map[string]bool
+	// conversationDeleting blocks new turns while file state is staged for deletion.
+	conversationDeleting map[string]bool
+	conversationFileOps  map[string]int
 	// chatCancel holds the cancel func for each in-flight conversation run (keyed by
 	// convBusyKey), so a manual stop can abort JUST that session's agent run. Set/
 	// cleared alongside chatBusy under chatMu. Aborting a run does NOT touch the P3
@@ -149,8 +150,9 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
 	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key,
-		jwtKeyPath: filepath.Join(keyDir, jwtKeyFilename), chatBusy: map[string]bool{},
-		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
+		jwtKeyPath: filepath.Join(keyDir, jwtKeyFilename), chatBusy: map[string]bool{}, conversationDeleting: map[string]bool{},
+		conversationFileOps: map[string]int{},
+		chatCancel:          map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),

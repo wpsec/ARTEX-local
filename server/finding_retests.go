@@ -12,10 +12,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	actool "github.com/Autumn-27/norma/tool"
 	"github.com/wpsec/ARTEX-local/agent"
 	"github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/intercept"
-	actool "github.com/Autumn-27/norma/tool"
 )
 
 func (s *Server) listActiveFindingRetests(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +128,11 @@ func (s *Server) startFindingRetest(w http.ResponseWriter, r *http.Request) {
 	if created {
 		busyKey := s.convBusyKey(conv.ID)
 		s.chatMu.Lock()
+		if s.conversationDeleting[busyKey] {
+			s.chatMu.Unlock()
+			writeErr(w, http.StatusConflict, "复测会话正在删除，无法启动")
+			return
+		}
 		s.chatBusy[busyKey] = true
 		s.chatMu.Unlock()
 		s.runConversation(conv, retest.InitialMessage(), busyKey)

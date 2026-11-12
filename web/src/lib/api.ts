@@ -1023,9 +1023,12 @@ export const api = {
   pinConversation: (id: number, pinned: boolean) => patch<Conversation>(`/conversations/${id}`, { pinned }),
   updateConversationProfile: (id: number, llm_profile_id: number | null) =>
     patch<{ ok: boolean }>(`/conversations/${id}/profile`, { llm_profile_id }),
-  deleteConversation: (id: number) => del<{ deleted: number }>(`/conversations/${id}`),
+  deleteConversation: (id: number) => del<{ deleted: number; cleanup_warning?: string }>(`/conversations/${id}`),
   deleteConversations: (ids: number[]) =>
-    post<{ items: { id: number; ok: boolean; error?: string }[] }>("/conversations/delete/batch", { ids }),
+    post<{ items: { id: number; ok: boolean; error?: string; cleanup_warning?: string }[] }>(
+      "/conversations/delete/batch",
+      { ids },
+    ),
   // Incremental tail: steps after `since` (id ASC) — live poll + post-send fetch.
   conversationMessages: (id: number, since = 0) =>
     get<{ items: Activity[]; cursor: number; running: boolean }>(`/conversations/${id}/messages?since=${since}`).then(

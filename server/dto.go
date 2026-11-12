@@ -308,6 +308,10 @@ type FindingDTO struct {
 	ReportEvidenceVersion int64                      `json:"report_evidence_version"`
 	ReportStale           bool                       `json:"report_stale"`
 	TrafficBindings       []db.FindingTrafficBinding `json:"traffic_bindings,omitempty"`
+	EvidenceCheckStatus   string                     `json:"evidence_check_status"`
+	EvidenceCheckNote     string                     `json:"evidence_check_note"`
+	EvidenceQuotes        []db.FindingEvidenceQuote  `json:"evidence_quotes"`
+	Counterevidence       string                     `json:"counterevidence"`
 
 	ID                       string `json:"id"`
 	FindingID                string `json:"finding_id,omitempty"` // standalone findings-table id — the handle for status updates
@@ -373,25 +377,33 @@ func assetLabel(a *db.Asset) string {
 // findingPayload mirrors the JSON written by the worker's report_finding tool
 // (agent/tools.go addFinding): {vulnclass, severity, summary, evidence:{by,poc}}.
 type findingPayload struct {
-	VulnClass string          `json:"vulnclass"`
-	Name      string          `json:"name"`
-	Severity  string          `json:"severity"`
-	Summary   string          `json:"summary"`
-	Evidence  json.RawMessage `json:"evidence"`
+	VulnClass           string                    `json:"vulnclass"`
+	Name                string                    `json:"name"`
+	Severity            string                    `json:"severity"`
+	Summary             string                    `json:"summary"`
+	Evidence            json.RawMessage           `json:"evidence"`
+	EvidenceCheckStatus string                    `json:"evidence_check_status"`
+	EvidenceCheckNote   string                    `json:"evidence_check_note"`
+	EvidenceQuotes      []db.FindingEvidenceQuote `json:"evidence_quotes"`
+	Counterevidence     string                    `json:"counterevidence"`
 }
 
 func findingDTO(n *db.Node) FindingDTO {
 	var p findingPayload
 	_ = json.Unmarshal(n.Payload, &p)
 	d := FindingDTO{
-		ID:        i64s(n.ID),
-		VulnClass: p.VulnClass,
-		Name:      p.Name,
-		Severity:  p.Severity,
-		Status:    db.FindingPending,
-		Summary:   p.Summary,
-		Evidence:  rawString(p.Evidence),
-		TS:        rfc3339(n.CreatedAt),
+		ID:                  i64s(n.ID),
+		VulnClass:           p.VulnClass,
+		Name:                p.Name,
+		Severity:            p.Severity,
+		Status:              db.FindingPending,
+		Summary:             p.Summary,
+		Evidence:            rawString(p.Evidence),
+		EvidenceCheckStatus: p.EvidenceCheckStatus,
+		EvidenceCheckNote:   p.EvidenceCheckNote,
+		EvidenceQuotes:      p.EvidenceQuotes,
+		Counterevidence:     p.Counterevidence,
+		TS:                  rfc3339(n.CreatedAt),
 	}
 	if n.SourceTaskID > 0 {
 		d.SourceTaskID = i64s(n.SourceTaskID)
@@ -420,6 +432,10 @@ func findingDTOsForOwner(taskID, description string, in []*db.Node, meta map[int
 			d.FindingID = i64s(m.ID)
 			d.Status = m.Status
 			d.TrafficCount = m.TrafficCount
+			d.EvidenceCheckStatus = m.EvidenceCheckStatus
+			d.EvidenceCheckNote = m.EvidenceCheckNote
+			d.EvidenceQuotes = m.EvidenceQuotes
+			d.Counterevidence = m.Counterevidence
 			d.Assets = findingAssetDTOs(m.AssetIDs, assets)
 		}
 		out = append(out, d)
@@ -451,6 +467,8 @@ func findingFromDB(f *db.DBFinding, assets map[int64]*db.Asset) FindingDTO {
 		FindingID:    i64s(f.ID),
 		TrafficCount: f.TrafficCount, EvidenceVersion: f.EvidenceVersion, ReportEvidenceVersion: f.ReportEvidenceVersion,
 		ReportStale: f.Report != "" && f.EvidenceVersion != f.ReportEvidenceVersion, TrafficBindings: f.TrafficBindings,
+		EvidenceCheckStatus: f.EvidenceCheckStatus, EvidenceCheckNote: f.EvidenceCheckNote,
+		EvidenceQuotes: f.EvidenceQuotes, Counterevidence: f.Counterevidence,
 		VulnClass: f.VulnClass,
 		Name:      f.Name,
 		Severity:  f.Severity,
