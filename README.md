@@ -1,8 +1,6 @@
-> **分支维护约定**
-> - `main` 是独立的安全维护备份，只接受漏洞修复，不合入整合、优化或功能开发。
-> - `artex-iteration` 是活跃整合分支，后续产品改进以它为集成目标。
-> - `artex-iteration-dev` 用于日常开发；开发完成并通过检查后合入 `artex-iteration`。
-> - 若 `main` 上的安全修复也要进入整合版，应单独 cherry-pick 到开发线再合入；不把 `artex-iteration` 或开发分支合入 `main`。
+> **分支与仓库说明**
+> ARTEX 衍生版本地址：[wpsec/ARTEX-local](https://github.com/wpsec/ARTEX-local)。衍生版本在 [`artex-iteration`](https://github.com/wpsec/ARTEX-local/tree/artex-iteration) 分支，日常开发使用 `artex-iteration-dev`。
+> `main` 保留原始 ARTEX 源码基线；本次仅补充衍生版本入口说明，后续衍生开发不再修改 `main`。
 
 <div align="center">
 
@@ -57,16 +55,6 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
 [AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
 
-
-## 资产同步（ScopeSentry）
-
-支持从 [ScopeSentry](https://github.com/Autumn-27/ScopeSentry) 直接同步资产数据，免去重复收集：
-
-- 在「**资产同步**」页填 ScopeSentry 的地址与 API Key，接入数据源；
-- 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
-- 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
-
----
 
 ## 首次部署：Docker
 
@@ -218,7 +206,7 @@ server {
 
 ARTEX 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可通过通用 MCP 配置接入外部目录分析服务；未接入时会继续执行其他可用检查。
 
-启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。ScopeSentry Skill 仅在 ARTEX 已连接 ScopeSentry 服务且任务需要其数据时使用。
+启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。
 
 LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。
 
@@ -254,7 +242,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d artex
 - MCP 凭据与管理 API 定向测试：先将 `ARTEX_PG_DSN` 指向隔离的临时 PostgreSQL 测试库，再运行：
 
   ```bash
-  ARTEX_PG_DSN='<隔离测试库 DSN>' go test ./server -run 'Test(MgmtAPI|ResolveMCPEnvWithLookup|ResolveMCPEnvWithLookupMissingSecret|ResolveMCPEnvWithLookupRejectsMalformedReference|ResolveMCPEnvKeepsReferenceOutOfStoredConfig|ConnectMCPHTTPResolvesSecretAsHeader|ScopeSentryStatusResolvesSecretHeader)$' -count=1
+  ARTEX_PG_DSN='<隔离测试库 DSN>' go test ./server -run 'Test(MgmtAPI|ResolveMCPEnvWithLookup|ResolveMCPEnvWithLookupMissingSecret|ResolveMCPEnvWithLookupRejectsMalformedReference|ResolveMCPEnvKeepsReferenceOutOfStoredConfig|ConnectMCPHTTPResolvesSecretAsHeader)$' -count=1
   ```
 
   这些测试会读写 MCP 配置和测试表，不要连接正在使用的 ARTEX 数据库。未配置 DSN 时，依赖 PostgreSQL 的测试可能跳过。
