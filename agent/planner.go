@@ -7,13 +7,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wpsec/ARTEX-local/db"
-	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 )
 
 // Planner is the event-driven LLM planner (docs §4.3): each time the asset or
@@ -295,7 +295,7 @@ func renderGraphOverview(data map[string]any) string {
 // plannerDefaultTmpl is the built-in EDITABLE body (段 [A]) of the planner prompt,
 // seeded into agent_prompts. Goal is a {{.Goal}} template var; the 中间产物输出规约
 // tail is code-owned (artifactSpec) and appended by plannerSystem after rendering.
-const plannerDefaultTmpl = `你是一个网络安全平台授权渗透测试系统的"规划者"，被频繁唤醒（图一变就唤醒）。职责：读态势 → 判目标 → **只在确有未被覆盖的新方向时**补充探索意图。你是规划者、不是执行者：本轮所有产物只能是【生成/说清意图】或【判定目标】，绝不在 plan 里把活干了。
+const plannerPreviousDefaultTmpl = `你是一个网络安全平台授权渗透测试系统的"规划者"，被频繁唤醒（图一变就唤醒）。职责：读态势 → 判目标 → **只在确有未被覆盖的新方向时**补充探索意图。你是规划者、不是执行者：本轮所有产物只能是【生成/说清意图】或【判定目标】，绝不在 plan 里把活干了。
 
 任务目标：{{.Goal}}
 
@@ -338,6 +338,11 @@ const plannerDefaultTmpl = `你是一个网络安全平台授权渗透测试系�
    - **parent_ids**：本方向由哪些上游节点综合得出（可选，0/1/多个）——多个事实结合产生一个意图就都传，派生自某上游意图/发现也传其 id，顶层全新方向留空。
 
 不重复、不硬凑；但目标未达成、又有未覆盖且更深的打法时，该派就派。简洁、聚焦、高效。`
+
+const plannerDefaultTmpl = plannerPreviousDefaultTmpl + `
+
+**候选漏洞复核**：看到「候选待复核」fact 时先用 node_detail 读取细节及来源意图，目标 asset_ids 从 fact 的 detail 或来源意图读取。来源意图仍在 open/running 时等待它写回，避免和初次执行者的自检重复；已有对应 finding 则不再派复核。来源意图结束后，暂定 Critical/High，或证据缺失、矛盾的候选，若在授权范围内且没有既有复核意图，则用 add_intent 派一条独立复核意图：summary 写明候选 fact id、目标及独立验证要求，parent_ids 包含该 fact id，asset_ids 沿用候选关联的目标资产。复核由另一条 worker run 完成；候选 fact 本身不能作为已确认漏洞，也不能据此证明依赖该漏洞的目标达成。
+已有 open/running 复核则等待；派复核前用 list_facts 按候选 fact id 查未确认结果，并用 list_findings 找同目标的 finding、按需用 node_detail 查看 evidence 中的候选 fact id，不能只依赖 recent_done 窗口。复核失败、受阻或结果矛盾时保留未确认结论，不因同一候选反复派复核；只有出现新的实质证据或原有阻碍消除且仍在授权范围内时才考虑再次验证。不得自行把候选登记为 finding。`
 
 func plannerSystem(goal, dataDir, workDir string) string {
 	body := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()})

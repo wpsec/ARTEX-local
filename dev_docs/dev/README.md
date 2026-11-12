@@ -15,3 +15,5 @@ ZAP 与 BloodHound MCP 试点历史说明：[2026-11-08 配置说明](2026-11-08
 BloodHound 默认集成移除与当前两容器部署：[2026-11-12 开发说明](2026-11-12-bloodhound-integration-removal.md)。
 
 任务发现与 MCP 统计界面修复：[2026-11-12 修复记录](2026-11-12-task-findings-mcp-ui-fixes.md)。
+
+Agent 复核流程及本地评测：[2026-11-12 Agent 复核](2026-11-12-agent-verification.md)。

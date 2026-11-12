@@ -7,3 +7,5 @@
 BloodHound 默认集成移除评审：[2026-11-12 评审记录](2026-11-12-bloodhound-integration-removal.md)。
 
 版本、构建说明与登录须知评审：[2026-11-12 评审记录](2026-11-12-version-and-login-notice.md)。
+
+Agent 复核流程评审：[2026-11-12 评审记录](2026-11-12-agent-verification-review.md)。

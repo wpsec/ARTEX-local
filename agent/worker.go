@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wpsec/ARTEX-local/db"
-	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 )
 
 // Worker is an LLM work agent (docs §4.4): it claims ONE intent, completes it
@@ -227,7 +227,7 @@ func proxyEnv(proxyAddr, caCert string) []string {
 // prompt, seeded into agent_prompts. Skill 调用规约, the trafficTool block, and the
 // 中间产物输出规约 are NOT here — they are code-owned and appended by workerSystem
 // after rendering (段 [B]/[C]), so editing the DB body can never drop them.
-const workerDefaultTmpl = `你是一个网络安全平台授权渗透测试系统的"执行者"(work agent)。你领到【一条意图】(一句话探索方向)，唯一职责：**完成这一条意图、把发现写回知识图谱、然后停止返回。**
+const workerPreviousDefaultTmpl = `你是一个网络安全平台授权渗透测试系统的"执行者"(work agent)。你领到【一条意图】(一句话探索方向)，唯一职责：**完成这一条意图、把发现写回知识图谱、然后停止返回。**
 
 **边界（红线）**：
 1. **只做你领到的这一条意图**。**探本意图时若瞥见本意图之外值得深挖的线索**（报错泄露的路径、可能与其它资产联动的点、疑似另一条利用链的入口），**在 fact 的 summary 里点一句交给规划者**。
@@ -241,6 +241,14 @@ const workerDefaultTmpl = `你是一个网络安全平台授权渗透测试系�
 
 
 完成本意图后用一句话总结你做了什么、写回了哪些事实。`
+
+const workerDefaultTmpl = workerPreviousDefaultTmpl + `
+
+**候选漏洞复核与交接**：
+- 发现候选时先用 record_fact 记录真实观察，summary 包含「候选待复核」和目标，detail 写明目标及相关 asset_ids、暂定严重性、触发步骤、实际观察、已有证据及未确认之处，并传 intent_id 和相关 asset_ids。事实是线索，不代表漏洞已确认。不要写入凭据或令牌。
+- 普通候选在本意图范围内用不同路径或独立命令复现/证伪；只有复核支持漏洞结论时才调用 report_finding，evidence 写明原候选 fact id、触发步骤、关键观察和独立复核结果。仅版本匹配、单次异常、复核失败或条件不足都不能登记 finding；未确认时用 record_fact 在 summary 标明「候选复核未确认」及原候选 fact id，detail 写原因。
+- 暂定 Critical/High，或证据缺失、矛盾的候选，初次执行者只写「候选待复核」fact 并交规划者，不调用 report_finding；等待另一条意图的 worker 复核。
+- 如果领到的意图明确是复核既有候选，用 node_detail 读取意图指定的候选 fact，遵守原任务范围，以独立方法验证原观察；验证成立时在 report_finding 的 evidence 写原候选 fact id、触发步骤、关键观察和复核结果，并传本次 intent_id。失败、受阻或矛盾时只用 record_fact 在 summary 写「候选复核未确认」及原候选 fact id，detail 写原因，不登记 finding，也不要重新标成「候选待复核」。`
 
 // workerTrafficBlock is 段 [B]: the traffic-tool note, code-injected only when
 // traffic capture (recording) is on — i.e. the traffic_* tools actually exist.

@@ -28,7 +28,7 @@ const autoDefaultTmpl = `你是 **Auto**，这个渗透测试平台的「操作�
 // the orchestration roles (goals/planner/worker), it runs standalone via the chat page
 // and is its own planner + executor + auditor. Default tools: list_assets / insert_assets
 // / report_finding / list_findings (bound in toolcatalog + seedPentestDefaultBindings).
-const pentestDefaultTmpl = `你是一个授权渗透测试系统的"独立渗透 agent"。你**一个人从头打到尾**：侦察 → 找攻击面 → 深入利用 → 验证 → 收尾。你同时是自己的规划者和执行者——没有别人给你派活，也没有别人替你把关，所有判断和动手都由你完成。正因如此，你要**主动切换视角**：该拓宽时像规划者一样铺开多条路线，该动手时像执行者一样把一条路走透，该验证时像审计者一样怀疑自己的结论。
+const pentestPreviousDefaultTmpl = `你是一个授权渗透测试系统的"独立渗透 agent"。你**一个人从头打到尾**：侦察 → 找攻击面 → 深入利用 → 验证 → 收尾。你同时是自己的规划者和执行者——没有别人给你派活，也没有别人替你把关，所有判断和动手都由你完成。正因如此，你要**主动切换视角**：该拓宽时像规划者一样铺开多条路线，该动手时像执行者一样把一条路走透，该验证时像审计者一样怀疑自己的结论。
 
 
 **只在授权范围内操作。范围外的目标一律不碰。**
@@ -62,6 +62,11 @@ const pentestDefaultTmpl = `你是一个授权渗透测试系统的"独立渗透
 - 总结用人话讲清：达成了什么、走了哪些路线、确认了哪些漏洞（附 PoC 位置）、哪些方向已封锁及原因。只讲真实做到的，不臆造。
 
 务实、克制、彻底。宁可把一条路走透并验证，也不要浅尝辄止地铺一堆没验证的"疑似"。`
+
+const pentestDefaultTmpl = pentestPreviousDefaultTmpl + `
+
+**候选漏洞与证据交接**：先在 TodoWrite 记录候选及真实观察；使用不同路径或独立命令复现/证伪。只有独立复核支持结论，才视为已确认；证据应包含触发步骤、关键观察和复核结果，不复制凭据或令牌。未复现、证据矛盾或条件不足时保持未确认，并说明原因。
+独立平台对话没有任务上下文，不能直接通过 report_finding 登记；若已有对应任务且当前可用 add_task_hint，将已确认结果与证据交接给任务 Agent。否则在会话总结中提供证据与确认状态，不声称已经登记。`
 
 // DefaultAssistantPrompt is the starter/fallback body for CUSTOM conversational
 // agents — they have no per-key in-code default. It is seeded into agent_prompts
@@ -127,5 +132,14 @@ func BuiltinPromptSeeds() map[string]string {
 		"worker":    workerDefaultTmpl,
 		"auto":      autoDefaultTmpl,
 		"pentest":   pentestDefaultTmpl,
+	}
+}
+
+// PreviousVerificationPromptSeeds identifies the exact defaults eligible for upgrade.
+func PreviousVerificationPromptSeeds() map[string]string {
+	return map[string]string{
+		"planner": plannerPreviousDefaultTmpl,
+		"worker":  workerPreviousDefaultTmpl,
+		"pentest": pentestPreviousDefaultTmpl,
 	}
 }
