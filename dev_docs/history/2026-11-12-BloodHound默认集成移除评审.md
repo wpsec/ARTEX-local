@@ -1,4 +1,4 @@
-# BloodHound 默认集成移除评审
+# 【已完成】BloodHound 默认集成移除评审
 
 ## 评审范围
 

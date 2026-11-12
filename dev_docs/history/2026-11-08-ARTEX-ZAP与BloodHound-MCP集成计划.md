@@ -1,4 +1,4 @@
-# ARTEX 集成 ZAP 与 BloodHound MCP 实施计划
+# 【已取代】ARTEX 集成 ZAP 与 BloodHound MCP 实施计划
 
 ## 摘要
 

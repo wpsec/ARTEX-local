@@ -1,6 +1,6 @@
-# ARTEX ZAP 与 BloodHound MCP 配置
+# 【已取代】ARTEX ZAP 与 BloodHound MCP 试点实现记录
 
-> 历史试点记录，描述 2026-11-08 至 2026-11-11 的实现与验收状态，不代表当前默认部署。BloodHound 默认集成已于 2026-11-12 移除；当前结构见[移除说明](2026-11-12-bloodhound-integration-removal.md)。
+> 历史试点记录，描述 2026-11-08 至 2026-11-11 的实现与验收状态，不代表当前默认部署。BloodHound 默认集成已于 2026-11-12 移除；当前结构见[移除说明](2026-11-12-BloodHound默认集成移除实现说明.md)。
 
 ## 试点阶段的部署模型
 
@@ -74,7 +74,7 @@ ARTEX/PostgreSQL 与 CE 同机运行时，以 4 个并发请求执行 20 次 Blo
 
 样本导入后空闲时 CE 三容器合计约 1.1 GiB；并发查询后一次资源采样为 CE API/UI 2.21 GiB、Neo4j 911 MiB、CE PostgreSQL 63 MiB。同一时点 ARTEX 35 MiB、原 PostgreSQL 149 MiB，五个容器合计约 3.34 GiB；Docker VM 限额为 7.75 GiB。SpecterOps 文档列出 CE 最低主机规格 8 GB RAM、4 核，超过 5 万用户的大型环境建议 96 GB RAM、12 核；8 GB 是主机最低规格，不是固定的单容器内存预留。本结果仅适用于小型合成样本，数据量与并发图查询会影响占用。
 
-历史评审结论建议维持默认禁用并由使用者单独部署 CE；该决定后来一度调整为默认 Compose 提供 CE 和合成样本。该默认集成已于 2026-11-12 移除。历史资源数据仍可用于参考；完整试点记录见[实施计划历史](../history/2026-11-08-artex-zap-bloodhound-mcp-integration.md)。
+历史评审结论建议维持默认禁用并由使用者单独部署 CE；该决定后来一度调整为默认 Compose 提供 CE 和合成样本。该默认集成已于 2026-11-12 移除。历史资源数据仍可用于参考；完整试点记录见[实施计划历史](2026-11-08-ARTEX-ZAP与BloodHound-MCP集成计划.md)。
 
 ## 当时的默认 Compose 验收（2026-11-11）
 
