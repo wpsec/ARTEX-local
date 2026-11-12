@@ -46,7 +46,7 @@ func TestSeedAssociatesTargetAssetWithTask(t *testing.T) {
 	}
 }
 
-func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceAndTranscripts(t *testing.T) {
+func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceTranscriptsAndNoaArchives(t *testing.T) {
 	dataDir := t.TempDir()
 
 	removed := []struct {
@@ -59,6 +59,8 @@ func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceAndTranscripts(t *testing.T) {
 		{path: filepath.Join("transcripts", "exp12-worker-i9.jsonl")},
 		{path: filepath.Join("transcripts", "exp12-main"), isDir: true},
 		{path: filepath.Join("transcripts", "exp12-worker-i9"), isDir: true},
+		{path: filepath.Join("noa", "exp12-main"), isDir: true},
+		{path: filepath.Join("noa", "exp12-worker-i9"), isDir: true},
 	}
 	kept := []struct {
 		path  string
@@ -73,6 +75,9 @@ func TestDeleteTaskFilesRemovesOnlyOwnedWorkspaceAndTranscripts(t *testing.T) {
 		{path: filepath.Join("transcripts", "exp12-main.txt")},
 		{path: filepath.Join("transcripts", "conv-12.jsonl")},
 		{path: filepath.Join("transcripts", "unrelated-session"), isDir: true},
+		{path: filepath.Join("noa", "exp123-main"), isDir: true},
+		{path: filepath.Join("noa", "exp12main"), isDir: true},
+		{path: filepath.Join("noa", "chat-conv-12"), isDir: true},
 	}
 
 	for _, fixture := range append(removed, kept...) {
@@ -119,12 +124,13 @@ func TestDeleteTaskFilesMissingTargetsIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestStageTaskFilesRollbackRestoresWorkspaceAndTranscripts(t *testing.T) {
+func TestStageTaskFilesRollbackRestoresWorkspaceTranscriptsAndNoaArchives(t *testing.T) {
 	dataDir := t.TempDir()
 	paths := []string{
 		filepath.Join("tasks", "77", "notes.txt"),
 		filepath.Join("transcripts", "exp12-main.jsonl"),
 		filepath.Join("transcripts", "exp12-worker-i9", "sidechain.jsonl"),
+		filepath.Join("noa", "exp12-worker-i9", "state.json"),
 	}
 	for _, path := range paths {
 		createDeleteFixture(t, dataDir, path, false)

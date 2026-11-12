@@ -2108,7 +2108,9 @@ function DeleteOptionFields({
           />
           <FieldContent>
             <FieldLabel htmlFor={`delete-files-${idPrefix}`}>任务文件</FieldLabel>
-            <FieldDescription>删除该任务工作目录中的上传文件、命令输出和其他产物。</FieldDescription>
+            <FieldDescription>
+              删除该任务工作目录中的上传文件、命令输出和其他产物，并清除对应的 noa 压缩原文归档。
+            </FieldDescription>
           </FieldContent>
         </Field>
         <Field orientation="horizontal">

@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
+	actool "github.com/Autumn-27/norma/tool"
 	"github.com/wpsec/ARTEX-local/agent"
 	pgdb "github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/enrich"
 	"github.com/wpsec/ARTEX-local/guard"
 	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/wpsec/ARTEX-local/traffic"
-	actool "github.com/Autumn-27/norma/tool"
 )
 
 // Task is one engagement: a description + goal + its own exploration store,
@@ -1575,12 +1575,13 @@ type taskFileDeleteStage struct {
 	done     bool
 }
 
-// stageTaskFiles atomically renames the task workspace and owned transcripts to
-// a same-filesystem staging directory. The trailing dash in the transcript
-// prefix is significant: exploration 12 must not match exploration 123.
+// stageTaskFiles atomically renames the task workspace, transcripts and noa
+// sidecars to a same-filesystem staging directory. The trailing dash in the
+// session prefix is significant: exploration 12 must not match exploration 123.
 func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDeleteStage, error) {
 	stage := &taskFileDeleteStage{}
 	var targets []string
+	prefix := fmt.Sprintf("exp%d-", explorationID)
 	taskDir := filepath.Join(dataDir, "tasks", taskID)
 	if _, err := os.Lstat(taskDir); err == nil {
 		targets = append(targets, taskDir)
@@ -1596,13 +1597,26 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 		}
 		entries = nil
 	}
-	prefix := fmt.Sprintf("exp%d-", explorationID)
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, prefix) || (!entry.IsDir() && !strings.HasSuffix(name, ".jsonl")) {
 			continue
 		}
 		targets = append(targets, filepath.Join(transcriptDir, name))
+	}
+
+	noaDir := filepath.Join(dataDir, "noa")
+	entries, err = os.ReadDir(noaDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		entries = nil
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
+			targets = append(targets, filepath.Join(noaDir, entry.Name()))
+		}
 	}
 	if len(targets) == 0 {
 		stage.done = true
