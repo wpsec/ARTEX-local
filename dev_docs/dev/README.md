@@ -17,3 +17,5 @@ BloodHound 默认集成移除与当前两容器部署：[2026-11-12 开发说明
 任务发现与 MCP 统计界面修复：[2026-11-12 修复记录](2026-11-12-task-findings-mcp-ui-fixes.md)。
 
 Agent 复核流程及本地评测：[2026-11-12 Agent 复核](2026-11-12-agent-verification.md)。
+
+Web/API 工具拓展实现说明：[2026-11-12 工具拓展](2026-11-12-web-api-tool-expansion.md)。

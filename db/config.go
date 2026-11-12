@@ -1012,6 +1012,8 @@ WHERE name='BloodHound' AND transport='stdio' AND command=$1`, command); err != 
 	return tx.Commit()
 }
 
+const builtinOWASPZAPMCPName = "OWASP ZAP"
+
 // SeedBuiltinMCPServers installs the bundled ZAP MCP default once. Existing
 // records and visibility choices are left untouched.
 func (d *DB) SeedBuiltinMCPServers() error {
@@ -1037,7 +1039,7 @@ RETURNING key`).Scan(&marker)
 		name, transport, command, args, env, url string
 	}{
 		{
-			name:      "OWASP ZAP",
+			name:      builtinOWASPZAPMCPName,
 			transport: "http",
 			args:      `[]`,
 			env:       `{"Authorization":"${ARTEX_MCP_SECRET_ZAP_KEY}"}`,

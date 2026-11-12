@@ -208,6 +208,10 @@ server {
 默认 Compose 只启动 ARTEX 和 PostgreSQL。ZAP 作为 ARTEX 容器内的进程运行，首次初始化后会在 MCP 页面显示，并向内置 Agent 提供工具。通用 MCP 管理仍可连接用户自行部署的外部服务。
 
 - **OWASP ZAP**：ZAP `2.17.0` 和 MCP Integration add-on `0.4.0` 随 ARTEX 镜像提供，并默认启动。需要节省本机资源时，可在 `.env` 中设 `ARTEX_ZAP_ENABLED=false`。
+- **Web/API 命令行工具**：镜像预装 ffuf `2.3.0` 和 sqlmap `1.10.11.9#dev`，Agent 在授权 Web/API 任务中通过 Bash 按需调用，不会作为常驻服务运行。ffuf 默认提供 `/opt/artex/wordlists/web-common.txt` 小型路径字典。sqlmap 随镜像保留完整源码、上游 `tamper/` 脚本与许可证；ARTEX 不默认启用绕过脚本，也不自动选择脚本。许可说明见 [第三方软件声明](THIRD_PARTY_NOTICES.md)。
+- **资源参考**：镜像较记录的工具拓展前基线增加约 `34.8 MiB`。断网临时容器中的单次峰值为 ffuf `27.8 MiB`、SQLMap `56.1 MiB`、Puppeteer Core + Chromium `215.2 MiB`，均包含各自运行时和测试 fixture，不是 ARTEX 常驻进程开销，也不能相加。最新一次无任务采样中 ARTEX 为 `515.8 MiB`、PostgreSQL 为 `773.2 MiB`；这是单点值，不代表持续空闲基线或峰值。
+- **候选工具评估**：Nuclei 和 Schemathesis 仅在隔离靶场中用于能力对照，未打包进 ARTEX 镜像，也不会由 ARTEX 自动启动。
+- **范围限制**：启用任务允许白名单时，ARTEX 会拦截资产绑定意图中的范围外资产；单用户本地部署不会在网络层限制 Bash/CLI 任意 URL。启动扫描前仍须核实授权目标和排除范围。
 - ZAP 的传统 Spider、被动扫描和主动扫描默认可用。AJAX Spider / Client Spider 的 Firefox 浏览器支持需要额外浏览器与驱动，当前默认镜像未包含；可用内置 Playwright MCP 探索现代 SPA。详见 [ZAP Selenium 文档](https://www.zaproxy.org/docs/desktop/addons/selenium/)。
 
 ### 内置 Skill

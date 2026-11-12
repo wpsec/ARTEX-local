@@ -8,9 +8,36 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Autumn-27/norma/skill"
 )
+
+func TestBundledWebSkillsReferenceSeededZAPMCP(t *testing.T) {
+	reg, err := skill.LoadDir(filepath.Join("..", "skills"))
+	if err != nil {
+		t.Fatalf("load bundled skills: %v", err)
+	}
+
+	for _, name := range []string{"web-app-penetration-testing", "api-security-testing"} {
+		s, ok := reg.Get(name)
+		if !ok {
+			t.Fatalf("bundled Skill %q was not loaded", name)
+		}
+		found := false
+		for _, mcp := range s.MCPs {
+			if mcp == builtinOWASPZAPMCPName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Skill %q does not declare the seeded ZAP MCP name %q; mcps=%v", name, builtinOWASPZAPMCPName, s.MCPs)
+		}
+	}
+}
 
 // TestPoolProfilesOrder pins the failover chain query: keyless profiles can't
 // serve a request and excluded ones aren't fallback targets, so neither belongs

@@ -1,0 +1,68 @@
+# ARTEX 工具拓展计划：Web/API 高置信优先
+
+状态：本地 `artex:2.3.0` 主镜像已重建并切换到当前 ARTEX 容器（镜像 ID `sha256:c947f79a73d68e22653dba2d26bf9cead74da13fb94a38c3b5b4b720736fc8a8`，Docker 报告大小 `1,240,919,299` bytes）；路径发现、动态 API 采集、SQLMap 正负样本和资产白名单闸门已完成隔离验证。切换后确认 ARTEX Web 返回 HTTP 200，容器内 ffuf、sqlmap、Chromium 和 Puppeteer Core 可用。真实模型行为评测暂缓。按用户决定，Bash/CLI 网络层范围强制校验作为单用户本地部署的已知限制记录，不在本轮增加出口代理。
+
+## 目标
+
+在不改变 ARTEX 原生 Agent 入口和两容器部署的前提下，补齐 Web/API 任务中可复现的路径发现、单参数注入验证和动态浏览器脚本运行能力。工具随镜像提供、按需启动，不增加常驻服务。
+
+## 当前能力与缺口
+
+- **OWASP ZAP MCP** 提供 Spider、被动/主动扫描和 API 测试能力，现有 Agent 通过 Skill 延迟解锁相关 MCP 工具。ZAP Automation Framework 支持认证配置和 OpenAPI 导入；本轮不再增加另一套通用 DAST 引擎。
+- **Browser MCP、Playwright MCP/CLI 与 `api-recon`** 覆盖交互式浏览、动态 API 采集和脚本化探索。`runtime_harvest.js` 原先依赖另装 Puppeteer Core，并需指定 Chromium 路径，默认镜像缺少直接运行条件。
+- **Bash 基础工具**已有 `curl`、`jq`、`nmap` 等，但没有小型内置 Web 路径字典和专用 SQL 注入验证器。
+- **权限与业务流程验证仍有缺口**：工具可以协助重放请求或覆盖端点，但 BOLA、角色边界和多步业务流程需要测试账号、已知对象关系及可控数据。OWASP API 风险文档将对象级、函数级和属性级授权列为独立风险；单纯扩大扫描器无法可靠确认这些问题。
+
+## 首轮纳入
+
+1. **ffuf 2.3.0**：补充低速路径/参数候选发现。镜像提供 33 项小字典，Skill 默认限速 5 req/s、5 个并发，不递归、不扩大授权范围。
+2. **sqlmap `1.10.11.9#dev`**：仅用于已有证据指向的单个参数，采用 `risk=1`、`level=1`、单线程和 30 秒时限；`--answers='extending provided level=N'` 防止 `--batch` 自动接受扩大测试级别。默认基线使用 `--skip-waf` 跳过 WAF/IPS 启发式探测；这不绕过目标防护，也不评估 WAF。上游完整源码、`tamper/` 脚本和许可证随镜像保留；Agent 只把结果作为待复核线索，不枚举数据库或执行文件/OS 操作。
+3. **Puppeteer Core 23.11.1**：供已有 `runtime_harvest.js` 使用，复用镜像中 Playwright 的 Chromium，不单独下载浏览器，也不增加常驻进程。
+
+所有工具沿用现有 Agent 的 Bash/Skill 使用方式；不新增 MCP、Agent 类型、API、数据库表、服务或容器。实际扫描仍须符合任务授权和现有资产边界。
+
+## 暂缓候选
+
+- **Schemathesis**：若后续 Web/API 任务持续遇到 OpenAPI 已知但属性/流程覆盖不足，可在隔离靶场评估其 schema 驱动、stateful API 测试。多步测试可能创建、读取或删除资源，需要明确测试数据、账号、操作白名单和停止条件，因此暂不放进默认镜像。
+- **Nuclei**：暂缓默认集成。模板覆盖与 ZAP DAST 有重叠，还需管理模板版本、误报复核、请求强度和远程模板更新；只有出现 ZAP/现有规则无法覆盖的稳定用例时再单独评估。
+- **Caido、Burp 类流量代理与通用 Kali MCP**：与现有流量/浏览器/CLI 能力重合，或引入额外产品、服务和宽泛命令权限，当前没有足够增量理由。
+
+## SQL 注入过滤器脚本策略
+
+当前固定的 SQLMap 上游源码包含 85 个 `tamper/` Python 脚本，当前没有证据要求 ARTEX 再新增通用绕过脚本。默认只运行固定、低强度基线，不自动提高级别、不启用 `--tamper` 或随机 User-Agent。
+
+只有授权明确包括 WAF/输入过滤验证，且实际请求/响应表明具体过滤规则导致基线无法判断时，才进入可选评估：先确认数据库类型、参数编码和过滤行为，再检查 SQLMap 上游是否已有适配；上游没有合适实现时才写单用途脚本，并用隔离靶场正负样本验证。脚本按需显式调用，不默认打包，不自动串联多个转换。过滤器拒绝请求时记录为未确认，不把继续绕过当作默认动作。
+
+本轮隔离评估中，关闭 SQLMap 的 WAF/IPS 启发式后，`BEU` 正样本在 23 个请求、约 1 秒内检出，参数化查询负样本在 74 个请求、约 6 秒内未检出。未关闭该启发式时，同一正负靶场分别产生 235 和 98 个请求，并报告可疑请求被丢弃；因此 WAF 评估与普通 SQL 注入基线应分开运行。
+
+## 工具对照结论
+
+- **OWASP ZAP**：已是默认工具；本地授权样本中发现预期的反射型 XSS 和 SQL 注入，继续作为主 DAST/MCP 工具。
+- **Nuclei**：官方 OpenAPI、反射型 XSS、错误型 SQLi 模板分别在合成正样本命中；同类不反射/参数化负样本没有命中。单模板命令耗时约 0.06–2.06 秒、峰值 RSS 约 107–116 MiB；图像约 1.22 GB。OpenAPI 暴露仅为预期 Info 告警。与 ZAP 有覆盖重叠，且模板集需单独固定和更新，暂不默认加进 ARTEX 镜像。
+- **Schemathesis**：同一类 OpenAPI 样本生成 70 个测试用例、覆盖全部 6 个操作和 4 个参数，6/10 个声明响应被观察到（60%）。故意存在 SQL 字符串拼接的路径上出现 1 个返回 500 的用例（同时违反 server-error 和未声明状态码两条检查），但没有识别为 SQL 注入；另有管理接口 403 的鉴权警告。参数化查询负样本单操作生成 12 个用例且全部通过。它验证 schema 与输入/响应契约，不能替代 SQL 专项验证或多身份业务授权测试；单操作运行约 2.48 秒、进程峰值 RSS 约 396 MiB，全样本约 3.83 秒、峰值约 412 MiB，暂缓默认集成。
+
+新工具在断网一次性容器中做了资源采样：ffuf 默认限速 33 项路径枚举的 cgroup 峰值为 27.8 MiB（fixture 基线 18.7 MiB）；SQLMap 低强度单参数运行峰值为 56.1 MiB（fixture 基线 18.5 MiB）；Puppeteer Core 启动 Chromium 打开本地 data 页面峰值为 215.2 MiB（Node 基线 22.2 MiB）。数值包含各自工具容器内的运行时和 fixture，不是 ARTEX 整容器增量。最新重建容器在无扫描任务时 ARTEX 与 PostgreSQL 单点采样分别为 515.8 MiB、773.2 MiB；ZAP 位于 ARTEX 容器内，不增加第三个常驻容器。该采样不是持续空闲基线或峰值。
+
+认证后场景在隔离 loopback fixture 使用 Alice、Bob 两个测试身份完成对象级授权对照：故意存在 BOLA 的跨用户端点返回 200，安全控制/管理请求返回 403，匿名请求返回 401；ARTEX 流量记录到 16 条请求/响应。这个确定性回归验证了现有浏览器、Bash 和流量记录链路。
+
+ZAP MCP seed 与 Web/API Skill 的名称为 `OWASP ZAP`，已增加回归防止名称漂移。ZAP 工具发现与扫描调用已用 MCP 客户端完成。持久 fake-provider Agent Session 回归验证 deferred schema 隐藏、Skill 解锁、schema 查询和 fixture MCP 工具调用；真实模型选择行为评测依用户决定暂缓。这些确定性回归证明了调用机制，不代表 Agent 模型能自主完成双身份测试或正确挑选工具。
+
+## 验收
+
+- 镜像内工具版本固定，ffuf 发布包校验 SHA-256；许可证和来源可在镜像内定位。
+- 在断网临时容器的本地正负样本上验证：ffuf 找到预置路径；sqlmap 识别注入样本且不误报安全样本；`runtime_harvest.js` 通过内置 Chromium 采集本地 API 请求。
+- 本地样本只证明工具能够识别这些确定性案例，不代表对真实应用、复杂过滤器或所有数据库类型有同等检出率。WAF/过滤器适配脚本必须另行授权和评估。
+- 确认没有新增长驻工具进程、MCP 服务或部署容器；记录镜像体积和一次性工具负载资源。
+- 已验证配置任务允许白名单时，资产绑定意图中的范围外资产会被现有资产闸门拒绝；未配置启用的白名单时，范围白名单不生效。Bash/CLI 任意 URL 没有网络层硬拦截，此限制按单用户本地部署假设记录；本轮动态扫描均限制在 `network none` 容器内。
+- 新镜像 `artex:2.3.0` 在断网 one-off 容器中确认 ffuf 2.3.0、sqlmap `1.10.11.9#dev`、33 项字典、Chromium/Puppeteer Core、更新后的 Skill 和 ZAP 运行文件均可用。随后仅重建 ARTEX 服务，容器确认使用该镜像 ID，PostgreSQL 容器与数据卷保持原样；HTTP 冒烟检查返回 200，容器内命令与模块检查通过。
+- 真实模型的新旧效果对照单独评测，不将确定性工具回归等同于 Agent 已学会正确选用工具。
+
+## 调研来源
+
+- [ZAP Automation Framework](https://www.zaproxy.org/docs/automate/automation-framework/)
+- [ffuf 上游项目](https://github.com/ffuf/ffuf)
+- [sqlmap 官方功能说明](https://github.com/sqlmapproject/sqlmap/wiki/features)
+- [sqlmap Usage：tamper 脚本与 WAF 启发式选项](https://github.com/sqlmapproject/sqlmap/wiki/Usage#tamper-injection-data)
+- [Schemathesis Stateful Testing](https://schemathesis.readthedocs.io/en/latest/explanations/stateful/)
+- [Nuclei 模板项目](https://github.com/projectdiscovery/nuclei-templates)
+- [OWASP API Security Top 10：BOLA](https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization/)
