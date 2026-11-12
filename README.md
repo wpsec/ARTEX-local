@@ -109,7 +109,7 @@ ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.
 
 构建得到的镜像名为 `artex:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角版本来自嵌入二进制的构建版本。
 
-PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。已有部署中历史 BloodHound 容器与数据卷不会由此次源码变更自动清理。
+PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。升级时，旧 Compose 项目中当前配置未定义的遗留服务容器不会自动清理；确认不再需要后，可在启动命令中加入 `--remove-orphans` 移除这些容器，数据卷和镜像会保留。
 
 ## 日常使用
 
@@ -132,7 +132,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f artex
 docker compose -f docker-compose.yml -f docker-compose.local.yml down
 ```
 
-`down` 会移除当前 Compose 定义的容器，但保留 PostgreSQL 卷以及项目目录下的 `data/`、`skills/`；下次仍用上面的 `up -d` 启动。由旧版本创建的 BloodHound 容器不再属于当前 Compose 服务，不会在此操作中自动删除。
+`down` 会移除当前 Compose 定义的容器，但保留 PostgreSQL 卷以及项目目录下的 `data/`、`skills/`；下次仍用上面的 `up -d` 启动。旧版本留下的 orphan 容器不会随 `down` 自动删除；可在确认无用后使用 `up -d --remove-orphans` 清理容器，镜像和数据卷不会被删除。
 
 ## 本地重建
 
@@ -212,11 +212,11 @@ server {
 
 ### 内置 Skill
 
-ARTEX 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可使用用户通过通用 MCP 配置接入的 BloodHound；未接入时会继续执行其他可用检查。
+ARTEX 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可通过通用 MCP 配置接入外部目录分析服务；未接入时会继续执行其他可用检查。
 
 启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。ScopeSentry Skill 仅在 ARTEX 已连接 ScopeSentry 服务且任务需要其数据时使用。
 
-LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。BloodHound 默认集成移除后的部署说明见[开发文档](dev_docs/dev/2026-11-12-bloodhound-integration-removal.md)。
+LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。
 
 ### 手动漏洞复测
 
@@ -276,7 +276,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d artex
   npm run test:e2e -- e2e/mcp-presets.spec.ts
   ```
 
-- 全 Go 回归：`go test $(go list ./... | grep -v '/data/tasks/')`。本地 `data/tasks` 下忽略的历史 Go 文件不属于仓库测试包；上述命令会排除它们。截至 2026-11-11，已知 `agent.TestGraphOverviewExpandsAssociatedCompanyScope` 和 `server.TestFindingDeliveryReportIsolationAndEvidenceVersion` 仍失败；原因与复核过程见[集成计划历史记录](dev_docs/history/2026-11-08-artex-zap-bloodhound-mcp-integration.md)。
+- 全 Go 回归：`go test $(go list ./... | grep -v '/data/tasks/')`。本地 `data/tasks` 下忽略的历史 Go 文件不属于仓库测试包；上述命令会排除它们。2026-11-11 的历史回归曾报告 `agent.TestGraphOverviewExpandsAssociatedCompanyScope` 和 `server.TestFindingDeliveryReportIsolationAndEvidenceVersion` 失败，请以当前分支实际执行结果为准；相关复核记录见[评审索引](dev_docs/review/README.md)。
 - Mock 预览（无后端）：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
 
 运行完成后移除一次性测试数据库：
