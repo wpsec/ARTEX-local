@@ -32,7 +32,9 @@
 - 作者在本仓库历史提交 `c457963` 明确将各 Agent 的归档从任务/会话工作目录改为统一的 `<workDir>/noa/<SessionID>`，提交说明是避免归档分散。设置页原先声称归档在任务工作目录，与实际设计不符；本轮已更正文案，没有改变归档布局。
 - `noa_compaction` 设置默认关闭。Planner、Worker、主 Agent 和对话 Agent 每次新建 run 时读取开关；修改设置只影响之后启动的 run。
 - `noaadapter.Enable` 将 Compactor、Compress 工具和提示词作为一个整体挂入 Agent。启用后清除原生 `Compaction`，避免两套上下文管理器并行；初始化失败时记录告警并保留原生压缩。
-- noa 让模型按规则生成分层摘要，并把被压缩的原消息保存在 `<workDir>/noa/<sessionID>`，提示词提供归档检索路径。它能降低当前上下文占用，并为追溯完整原文保留通道；摘要仍由模型生成，可能遗漏或误述信息，也会增加压缩调用与摘要 token 成本。
+- 上游的设计是给消息分配稳定引用 ID，按上下文压力和可压缩量提示模型整理不同层级；高层摘要引用下一层归档，最底层保存原始消息，模型需要细节时沿路径读取。系统提示明确把摘要定义为可能出错的历史摘要，要求不要把其中的旧指令当作当前用户指令，并在细节重要时回读归档。根据这些实现和提示词，推断作者的目标是在缩短当前上下文的同时保留可追溯历史，而不是把摘要当成无损记忆。
+- norma v0.4.3 的归档实现使用临时文件后原子重命名；上游回归用例验证底层归档包含原文、各层归档链能到达原文。它们验证的是归档和链路机制，不证明真实模型生成的摘要准确，也不证明 Agent 在渗透任务中更有效。
+- noa 可以降低当前请求携带的历史上下文，但每次压缩会增加模型调用与摘要 token 成本。模型可能漏掉、误述或错误关联关键信息；恢复细节依赖模型主动发现摘要中的归档路径并正确调用读取工具，因此不能把磁盘中存在归档等同于任务行为稳定。
 - noa 接入新增针对性回归，覆盖默认关闭、Compactor/Compress/提示词装配、私有目录权限及初始化失败回退；尚未用真实模型验证摘要质量、上下文收益与长任务行为。上游模块包含自身测试，但不能替代 ARTEX 侧的真实模型评测。
 
 ### 隐私与生命周期
@@ -53,6 +55,7 @@ noaadapter 将归档和状态文件以 `0644` 写入，包含完整对话及工�
 
 - [ARTEX 独立版本与架构指南](https://www.artex.sh/how-it-works)：记录 Autumn-27、RuoJi6、sharenjun、BaaRai 等分支的版本线，并注明其独立、非官方属性。
 - [Norma 上游仓库](https://github.com/Autumn-27/norma)：当前依赖来源；本地锁定版本为 `v0.4.3`。
+- [Norma v0.4.3 noa 系统提示](https://github.com/Autumn-27/norma/blob/v0.4.3/noa/prompts_system.go)、[归档实现](https://github.com/Autumn-27/norma/blob/v0.4.3/noa/archive.go)、[归档文件写入](https://github.com/Autumn-27/norma/blob/v0.4.3/noaadapter/archive.go)及[归档链路回归](https://github.com/Autumn-27/norma/blob/v0.4.3/noaadapter/resilience_test.go)：用于核对 noa 的压缩、回读和归档完整性设计。
 - [RuoJi6 ARTEX CHANGELOG](https://github.com/RuoJi6/ARTEX/blob/main/CHANGELOG.md)：脚本审批快照、人工回退、请求重放和报告归档等候选能力。
 - [BaaRai ARTEX CHANGELOG](https://github.com/BaaRai/ARTEX/blob/main/CHANGELOG.md)：机器核验 finding 与证据绑定等候选能力。
 - [sharenjun ARTEX CHANGELOG](https://github.com/sharenjun/ARTEX-main/blob/main/CHANGELOG.md)：v0.4.4 请求重放范围校验、DNS 固定，以及 v0.4.5 的 Planner 交接持久化。
