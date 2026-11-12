@@ -69,6 +69,7 @@ prepare_docker_env(){
     info "沿用已存在的 .env"
   fi
   ensure_env_secret POSTGRES_PASSWORD
+  ensure_env_default ARTEX_VERSION "$(tr -d '[:space:]' < VERSION)"
   ensure_env_default ARTEX_ZAP_ENABLED true
   ensure_env_default ARTEX_BUNDLED_MCP_DEFAULTS true
   chmod 600 .env

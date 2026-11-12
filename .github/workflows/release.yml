@@ -129,12 +129,14 @@ jobs:
         with:
           images: ghcr.io/wpsec/artex-local
           tags: |
+            type=semver,pattern={{version}}
             type=ref,event=tag
             type=raw,value=latest
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          build-args: ARTEX_VERSION=${{ github.ref_name }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

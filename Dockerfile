@@ -5,11 +5,7 @@
 # 构建上下文的 dist/<TARGETARCH>/artex。这样多架构构建时 arm64 只需模拟 apt 层，
 # 不再模拟 Next/Go 编译，速度快得多。
 #
-# 本地手动构建镜像时，先自行准备二进制：
-#   cd web && npm run build:static && cd ..
-#   cp -r web/out server/webui/dist
-#   CGO_ENABLED=0 GOARCH=amd64 go build -tags embedui -o dist/amd64/artex ./cmd/artex
-#   docker build -t artex:local .
+# 本地镜像构建请先用 build.sh 编译匹配架构的二进制，再按 README 的 Compose 命令构建。
 ARG ZAP_VERSION=2.17.0
 FROM ghcr.io/zaproxy/zaproxy:${ZAP_VERSION} AS zap-runtime
 ARG ZAP_VERSION=2.17.0
@@ -59,3 +55,5 @@ VOLUME ["/app/data"]
 EXPOSE 8787 8788
 ENTRYPOINT ["/app/start.sh"]
 CMD ["-addr", ":8787", "-proxy", ":8788"]
+ARG ARTEX_VERSION=dev
+LABEL org.opencontainers.image.version="${ARTEX_VERSION}"

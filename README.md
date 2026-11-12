@@ -11,9 +11,9 @@
 AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 
-**本仓库是 ARTEX 的独立修改版本，基于原始 ARTEX 项目源码继续开发，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。本声明更新于 2026-11-07，来源和许可说明见 [NOTICE.md](NOTICE.md)。**
+**本仓库是 ARTEX 的独立修改版本，基于原始 ARTEX 项目源码继续开发，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。项目来源和许可说明见 [NOTICE.md](NOTICE.md)。**
 
-📦 **原始项目已停止维护。当前仓库独立维护源码、Docker Compose、容器镜像与 Release；测试当前源码请按下方步骤本地构建。**
+**原始项目已停止维护。当前仓库独立维护源码、Docker Compose、容器镜像与 Release；测试当前源码请按下方步骤本地构建。**
 
 </div>
 
@@ -72,6 +72,8 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 默认 Compose 部署只启动 ARTEX 和 PostgreSQL。OWASP ZAP 作为 ARTEX 容器内的进程运行，并通过内置 MCP 提供 Web 测试工具。
 
+项目版本记录在根目录的 `VERSION`，当前版本为 `2.3.0`。运行中的版本会显示在页面右上角；以 `v2.3.0` 等语义版本 tag 发布时，GHCR 镜像会带有 `2.3.0`、`v2.3.0` 和 `latest` 标签。部署时可在 `.env` 中把 `ARTEX_TAG` 设为固定版本，避免跟随 `latest` 更新。
+
 需要 Docker Engine 和 Docker Compose。
 
 ### 1. 生成本机配置并启动
@@ -88,20 +90,24 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ### 2. 从当前源码构建并启动
 
-测试尚未发布到 GHCR 的当前 checkout 时，需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync。运行 `./install.sh --prepare-only` 生成本机 `.env` 和随机密码，不会启动容器。LLM API Key 可以留空。
+从源码构建时，需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync 和 Docker Compose。运行 `./install.sh --prepare-only` 生成本机 `.env` 和随机密码，不会启动容器。LLM API Key 可以留空。
 
-编译当前平台对应的 Linux 二进制：
+从 `VERSION` 读取同一版本号，用于编译二进制和标记本地镜像：
 
 ```bash
+version="$(tr -d '[:space:]' < VERSION)"
 arch="$(go env GOARCH)"
-ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
+ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
 ```
 
-该命令会安装前端依赖、静态构建 Next.js 前端并编译 Go 后端。`build:static` 使用 Webpack；生成的前端资源会嵌入 Linux 二进制。然后构建本地镜像并启动完整 Compose：
+该命令会安装前端依赖、静态构建 Next.js 前端并编译 Go 后端。`build:static` 使用 Webpack；生成的前端资源会嵌入 Linux 二进制。然后构建版本化本地镜像并启动 Compose：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml build artex
+ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
+
+构建得到的镜像名为 `artex:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角版本来自嵌入二进制的构建版本。
 
 PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。已有部署中历史 BloodHound 容器与数据卷不会由此次源码变更自动清理。
 
@@ -133,10 +139,13 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml down
 本地修改源码后，重复编译并重建应用镜像即可。保留现有 `.env` 和 `pgdata` 卷，数据库配置与数据会继续使用：
 
 ```bash
+version="$(tr -d '[:space:]' < VERSION)"
 arch="$(go env GOARCH)"
-ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
+ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml build artex
 ```
+
+需要切换到新镜像时，再运行 `ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d`。若只想构建供检查，不要运行这一步；它会重建并启动 Compose 中的 ARTEX 服务。
 
 ## 配置
 

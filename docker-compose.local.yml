@@ -1,9 +1,11 @@
 services:
   artex:
-    image: artex:local
+    image: artex:${ARTEX_VERSION:-local}
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        ARTEX_VERSION: ${ARTEX_VERSION:-dev}
     environment:
       ARTEX_ZAP_ENABLED: ${ARTEX_ZAP_ENABLED:-true}
       ARTEX_BUNDLED_MCP_DEFAULTS: ${ARTEX_BUNDLED_MCP_DEFAULTS:-true}

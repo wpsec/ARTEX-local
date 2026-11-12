@@ -62,7 +62,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!agreed) {
-      setError("请先阅读并同意《使用须知》");
+      setError("请先阅读并确认《使用须知》");
       return;
     }
     setLoading(true);
@@ -137,7 +137,7 @@ export default function LoginPage() {
                 className="mt-0.5"
               />
               <Label htmlFor="agree-terms" className="text-sm font-normal leading-relaxed text-muted-foreground">
-                我已阅读并同意
+                我已阅读并确认
                 <button
                   type="button"
                   onClick={() => setTermsOpen(true)}
@@ -162,9 +162,9 @@ export default function LoginPage() {
               <ShieldCheck className="size-5" />
             </div>
             <div className="space-y-0.5">
-              <DialogTitle className="text-base">ARTEX 使用须知与免责声明</DialogTitle>
+              <DialogTitle className="text-base">ARTEX-local 使用须知</DialogTitle>
               <p className="text-xs text-muted-foreground">
-                版本 v1.0 · 生效日期 2026-09-18 · 请在登录前完整阅读以下全部条款
+                版本 v1.1 · 更新日期 2026-11-12 · 请在登录前完整阅读以下内容
               </p>
             </div>
           </DialogHeader>
@@ -175,11 +175,9 @@ export default function LoginPage() {
             className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-muted-foreground"
           >
             <p className="rounded-lg border bg-muted/40 p-3 text-foreground/80">
-              本《使用须知与免责声明》（以下简称"本声明"）是您与 ARTEX
-              项目作者及贡献者之间就使用本软件所达成的约定。请您在使用前审慎阅读、充分理解各条款内容，特别是以粗体或色块标注的免责、责任限制及禁止性条款。
+              本须知说明 ARTEX-local 的项目来源、授权测试边界和部署注意事项，不替代仓库内适用于具体文件的许可证，也不授予您访问或测试任何目标的权限。请在部署和使用前阅读相关项目文档。
               <span className="font-medium text-foreground">
-                {" "}
-                一旦您下载、安装、访问或以任何方式使用本软件，即视为您已阅读、理解并同意接受本声明的全部约束。
+                {" "}登录确认仅表示您已阅读本须知；每次测试仍须取得目标所有者的明确授权，并遵守约定范围。
               </span>
             </p>
 
@@ -188,12 +186,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   1
                 </span>
-                第一条 · 定义与开源许可
+                第一条 · 项目来源与许可证
               </h4>
               <p className="pl-7">
-                本软件（ARTEX）是一款基于 GNU Affero General Public License
-                v3.0（AGPL-3.0）发布的开源程序。您可依据该协议自由使用、复制、修改和分发本软件；但任何衍生作品（包括通过网络向第三方提供的在线服务）均须同样以
-                AGPL-3.0 协议开源并向使用者公开对应的完整源代码。AGPL-3.0 完整条款以随附的 LICENSE 文件为准。
+                本仓库是 ARTEX 的独立修改版本，由当前仓库独立维护，不代表原项目官方发布或背书。仓库根目录的 LICENSE、web/LICENSE 及各文件附带的许可声明可能不同；请依据对应文件和 NOTICE.md 核实适用条款。本须知不改变这些许可证。
               </p>
             </section>
 
@@ -202,10 +198,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   2
                 </span>
-                第二条 · 授权使用范围
+                第二条 · 测试授权与范围
               </h4>
               <p className="pl-7">
-                本软件仅供个人学习、代码研究、安全技术原理探讨，以及在您自行搭建的本地隔离环境中进行技术验证之用，适用于学习、学术研究、代码审阅等非攻击性、非破坏性用途。除本条明确许可的情形外，您不得将本软件用于任何其他目的。
+                仅对您拥有或已获得目标所有者明确授权的资产开展测试。开始前应确认授权主体、目标清单、允许的测试方法、时间窗口和影响限制；授权范围外的域名、地址、账户、云服务及第三方依赖不因此获得授权。发现新的资产或系统时，应先确认其是否在范围内。
               </p>
             </section>
 
@@ -215,16 +211,15 @@ export default function LoginPage() {
                   3
                 </span>
                 <AlertTriangle className="size-4" />
-                第三条 · 禁止行为
+                第三条 · 操作影响与限制
               </h4>
               <ul className="ml-7 list-decimal space-y-1.5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 pl-8 text-foreground/80 marker:text-destructive/70">
                 <li>
-                  严禁对任何网站、线上服务、他人或第三方所有的联网系统发起扫描、探测、利用或攻击（无论是否已获得授权、是否为您自有资产）；
+                  扫描、浏览器操作和命令可能产生网络流量、改变目标状态、触发告警或影响服务可用性；应先确认测试窗口、速率和停止条件；
                 </li>
-                <li>严禁将本软件用于任何实际的渗透测试、攻防对抗、红蓝演练或生产环境；</li>
-                <li>严禁将本软件用于非法入侵、数据窃取、勒索、拒绝服务（DoS/DDoS）或任何破坏性、犯罪性活动；</li>
-                <li>严禁移除、篡改或规避本软件及其输出中的任何版权、许可或安全提示信息；</li>
-                <li>严禁从事任何违反您所在国家或地区法律、法规及监管规定的行为。</li>
+                <li>主动扫描、利用验证及可能造成破坏或服务中断的操作，只能在明确授权且约定允许的范围内执行；</li>
+                <li>系统中的审批、拦截和安全设置不能替代目标授权，也不能扩大授权范围；</li>
+                <li>不得将系统用于超出授权范围的访问、数据获取、持久化、拒绝服务或其他违法活动。</li>
               </ul>
             </section>
 
@@ -233,11 +228,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   4
                 </span>
-                第四条 · 知识产权
+                第四条 · 数据处理
               </h4>
               <p className="pl-7">
-                本软件的著作权及相关知识产权归项目作者及贡献者所有，并在 AGPL-3.0
-                协议约定的范围内向您授予相应权利。除该协议明确授予的权利外，本声明未以明示或默示方式授予您任何其他权利。
+                任务、资产、发现、流量记录、日志和导出文件可能含有凭据、个人信息或其他敏感数据。默认 Docker 部署将数据保存在本机的 PostgreSQL 卷及项目数据目录；若配置外部 LLM 或 MCP 服务，发送给这些服务的提示词、工具参数和结果可能离开本机并受相应服务条款约束。请仅配置获准使用的服务，并保护凭据、日志、备份和导出文件。
               </p>
             </section>
 
@@ -246,10 +240,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   5
                 </span>
-                第五条 · 数据与隐私
+                第五条 · 部署与访问控制
               </h4>
               <p className="pl-7">
-                本软件为可自行部署的开源程序，作者不运营任何集中式服务、亦不会收集或上传您的使用数据。您在使用过程中产生、处理或接触的一切数据，均由您自行掌控并负责其合法性与安全性；因数据处理不当引发的任何后果由您自行承担。
+                默认 Compose 配置将 Web/API 端口 8787 发布到宿主机网络，流量代理端口 8788 仅绑定本机回环地址。请将管理界面限制在可信网络，按需配置防火墙或反向代理，并妥善设置管理员密码及数据库凭据。
               </p>
             </section>
 
@@ -258,14 +252,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   6
                 </span>
-                第六条 · 合规与法律责任
+                第六条 · 结果核验
               </h4>
               <p className="pl-7">
-                您应自行遵守所在国家或地区关于网络安全、数据安全与个人信息保护、计算机犯罪等方面的全部法律法规（在中国大陆包括但不限于《网络安全法》《数据安全法》《个人信息保护法》及相关司法解释）。
-                <span className="font-medium text-foreground">
-                  {" "}
-                  因您违反上述法律法规或本声明约定而产生的一切法律责任与后果，均由您本人独立承担，与本软件作者及贡献者无关。
-                </span>
+                Agent、LLM、扫描器和外部工具的输出可能不完整或不准确。应核对原始证据、确认影响并按授权流程复测；不要仅凭自动化结论采取可能影响系统或业务的措施。
               </p>
             </section>
 
@@ -274,11 +264,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   7
                 </span>
-                第七条 · 免责声明与责任限制
+                第七条 · 合法合规使用
               </h4>
               <p className="pl-7">
-                本软件按"现状（AS IS）"与"现有（AS
-                AVAILABLE）"状态提供，不附带任何明示或默示的担保，包括但不限于对适销性、特定用途适用性、准确性及不侵权的担保。在适用法律允许的最大范围内，本软件作者及贡献者不对因使用或无法使用本软件（无论使用方式是否得当）而导致的任何直接、间接、偶然、特殊或后果性损失承担责任，包括但不限于数据丢失、系统损坏、业务中断、利润损失或法律纠纷。
+                您应遵守适用于自身、目标系统和数据处理活动的法律法规、合同及组织政策，并确保获得必要的授权。各项权利、担保和责任以适用许可证及法律为准；本须知不构成法律意见，也不试图排除法律规定不得排除的责任。
               </p>
             </section>
 
@@ -287,10 +276,10 @@ export default function LoginPage() {
                 <span className="flex size-5 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
                   8
                 </span>
-                第八条 · 条款变更与最终解释
+                第八条 · 须知更新
               </h4>
               <p className="pl-7">
-                作者有权根据法律法规或项目发展需要不时更新本声明，更新后的版本将随项目发布并自公布之日起生效；您继续使用本软件即视为接受修订后的条款。在法律允许的范围内，本声明的最终解释权归项目作者所有。若本声明任一条款被认定为无效，不影响其余条款的效力。
+                本须知随项目版本更新。更新日期和内容以本仓库发布文件为准；如本须知与适用许可证不一致，以许可证条款为准。阅读并确认本须知不会替代具体任务的授权、范围确认和操作审批。
               </p>
             </section>
           </div>
@@ -308,7 +297,7 @@ export default function LoginPage() {
                   setError("");
                 }}
               >
-                我已阅读并同意全部条款
+                我已阅读并确认使用须知
               </Button>
             </DialogClose>
           </DialogFooter>

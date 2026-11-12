@@ -5,3 +5,5 @@
 本轮任务发现与 MCP 统计界面评审：[2026-11-12 评审记录](2026-11-12-task-findings-mcp-ui-fixes.md)。
 
 BloodHound 默认集成移除评审：[2026-11-12 评审记录](2026-11-12-bloodhound-integration-removal.md)。
+
+版本、构建说明与登录须知评审：[2026-11-12 评审记录](2026-11-12-version-and-login-notice.md)。
