@@ -103,7 +103,7 @@ func TestFindingTrafficToolUpgradePreservesCustomization(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := pg.SetSetting("finding_traffic_tools_v1", "false"); err != nil {
+	if err := pg.SetSetting("finding_evidence_quotes_v1", "false"); err != nil {
 		t.Fatal(err)
 	}
 	s.seedFindingTrafficTools()

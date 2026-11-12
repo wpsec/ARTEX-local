@@ -49,7 +49,7 @@ func TestDeliveryReportWithoutBoundTrafficDoesNotInventPackets(t *testing.T) {
 	}
 }
 
-func TestDeliveryReportUsesProofPacketAndPreservesCredentials(t *testing.T) {
+func TestDeliveryReportUsesProofPacketAndRedactsCredentials(t *testing.T) {
 	dataDir := t.TempDir()
 	managerDir := filepath.Join(dataDir, "manager")
 	storeDir := filepath.Join(managerDir, "evidence")
@@ -98,8 +98,8 @@ func TestDeliveryReportUsesProofPacketAndPreservesCredentials(t *testing.T) {
 		}
 	}
 	for _, secret := range []string{"query-secret", "header-secret", "session=cookie-secret", "body-secret", "response-cookie", "response-secret"} {
-		if !strings.Contains(request+response, secret) {
-			t.Fatalf("delivery packet omitted original credential %q: %s\n%s", secret, request, response)
+		if strings.Contains(request+response, secret) {
+			t.Fatalf("delivery packet leaked credential %q: %s\n%s", secret, request, response)
 		}
 	}
 }
@@ -178,6 +178,7 @@ func TestFindingDeliveryReportIsolationAndEvidenceVersion(t *testing.T) {
 
 	seedTraffic := func(id, path, requestHead, requestBody, responseBody string) {
 		t.Helper()
+		responseHead := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: sid=response-cookie"
 		_, err := s.m.traffic.DB().Exec(`INSERT INTO exchanges(id,ts,host,method,url_template,url,status,content_type,req_len,resp_len,path)
 VALUES(?,1,'delivery.local','POST',?,?,200,'application/json',?,?,'')`,
 			id, path, "http://delivery.local"+path, len(requestBody), len(responseBody))
@@ -185,8 +186,7 @@ VALUES(?,1,'delivery.local','POST',?,?,200,'application/json',?,?,'')`,
 			t.Fatal(err)
 		}
 		_, err = s.m.traffic.DB().Exec(`INSERT INTO exchange_bodies(id,req_head,resp_head,req_body,resp_body)
-VALUES(?,?,'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: sid=response-cookie',?,?)`,
-			id, requestHead, []byte(requestBody), []byte(responseBody))
+VALUES(?,?,?,?,?)`, id, requestHead, responseHead, []byte(requestBody), []byte(responseBody))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ VALUES(?,?,'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: sid
 	}
 	for _, secret := range []string{"query-secret", "header-secret", "request-cookie", "body-secret", "response-cookie", "response-secret"} {
 		if strings.Contains(requestPacket+responsePacket, secret) {
-			t.Fatalf("delivery packet leaked %q", secret)
+			t.Fatalf("delivery packet leaked %q:\nrequest=%s\nresponse=%s", secret, requestPacket, responsePacket)
 		}
 	}
 	if code := put(ownerID, "stale overwrite", vector, 0); code != http.StatusConflict {

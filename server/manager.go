@@ -224,6 +224,11 @@ type Manager struct {
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
+	serverMu  sync.Mutex
+	servers   map[*Server]struct{}
+	closing   bool
+	closeOnce sync.Once
+	closeErr  error
 	// taskStateMu preserves commit order between PostgreSQL lifecycle writes and
 	// their in-memory mirrors. lifecycleMu makes snapshots race-free, but without
 	// this outer write lock an older request could commit first and publish last.
@@ -801,12 +806,52 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 }
 
 func (m *Manager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.traffic != nil {
-		m.traffic.Close()
+	m.closeOnce.Do(func() {
+		m.serverMu.Lock()
+		m.closing = true
+		servers := make([]*Server, 0, len(m.servers))
+		for s := range m.servers {
+			servers = append(servers, s)
+		}
+		m.servers = nil
+		m.serverMu.Unlock()
+
+		for _, s := range servers {
+			s.Close()
+		}
+
+		if m.enrich != nil {
+			m.enrich.Close()
+		}
+		m.mu.Lock()
+		if m.traffic != nil {
+			m.traffic.Close()
+		}
+		if m.pg != nil {
+			m.closeErr = m.pg.Close()
+		}
+		m.mu.Unlock()
+	})
+	return m.closeErr
+}
+
+func (m *Manager) registerServer(s *Server) bool {
+	m.serverMu.Lock()
+	defer m.serverMu.Unlock()
+	if m.closing {
+		return false
 	}
-	return m.pg.Close()
+	if m.servers == nil {
+		m.servers = make(map[*Server]struct{})
+	}
+	m.servers[s] = struct{}{}
+	return true
+}
+
+func (m *Manager) unregisterServer(s *Server) {
+	m.serverMu.Lock()
+	delete(m.servers, s)
+	m.serverMu.Unlock()
 }
 
 // isTerminalStatus reports whether a task status is terminal (done/failed/timeout).

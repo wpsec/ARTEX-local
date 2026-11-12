@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wpsec/ARTEX-local/agent"
-	"github.com/wpsec/ARTEX-local/db"
-	"github.com/wpsec/ARTEX-local/intercept"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 )
 
 // isFKViolation reports whether err is a Postgres foreign-key violation (SQLSTATE
@@ -113,6 +113,8 @@ type Engine struct {
 	// waits for all goroutines, then releases every task-level Engine reference.
 	runtimeMu sync.Mutex
 	runtimes  map[string]*taskRuntime
+	stopping  bool
+	opWG      sync.WaitGroup
 
 	// per-task execution context: each planner.Plan / worker.Execute runs under it,
 	// so pausing can CANCEL an in-flight run (not just skip the next one). Recreated
@@ -224,6 +226,9 @@ func (e *Engine) IsDeleting(taskID string) bool {
 func (e *Engine) registerTaskRoutines(parent context.Context, taskID string, count int) *taskRuntime {
 	e.runtimeMu.Lock()
 	defer e.runtimeMu.Unlock()
+	if e.stopping {
+		return nil
+	}
 	rt := e.runtimes[taskID]
 	if rt == nil {
 		ctx, cancel := context.WithCancel(parent)
@@ -235,10 +240,43 @@ func (e *Engine) registerTaskRoutines(parent context.Context, taskID string, cou
 }
 
 func runTaskRoutine(rt *taskRuntime, fn func(context.Context)) {
+	if rt == nil {
+		return
+	}
 	go func() {
 		defer rt.wg.Done()
 		fn(rt.ctx)
 	}()
+}
+
+// Shutdown rejects new task loops, cancels existing ones, and waits for their
+// final database writes before the owning Manager closes PostgreSQL.
+func (e *Engine) Shutdown() {
+	e.runtimeMu.Lock()
+	e.stopping = true
+	type runtimeEntry struct {
+		taskID string
+		rt     *taskRuntime
+	}
+	entries := make([]runtimeEntry, 0, len(e.runtimes))
+	for taskID, rt := range e.runtimes {
+		rt.cancel()
+		entries = append(entries, runtimeEntry{taskID: taskID, rt: rt})
+	}
+	e.runtimeMu.Unlock()
+
+	for _, entry := range entries {
+		entry.rt.wg.Wait()
+	}
+	e.opWG.Wait()
+
+	e.runtimeMu.Lock()
+	for _, entry := range entries {
+		if e.runtimes[entry.taskID] == entry.rt {
+			delete(e.runtimes, entry.taskID)
+		}
+	}
+	e.runtimeMu.Unlock()
 }
 
 // StopTask permanently stops every long-lived goroutine and removes all Engine
@@ -759,6 +797,10 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	}
 	rt := e.registerTaskRoutines(ctx, t.ID, 1+workers)
 	e.deleteMu.RUnlock()
+	if rt == nil {
+		e.started.Delete(t.ID)
+		return
+	}
 	e.touch(t.ID)
 	runTaskRoutine(rt, func(loopCtx context.Context) { e.plannerLoop(loopCtx, t) })
 	for i := 0; i < workers; i++ {

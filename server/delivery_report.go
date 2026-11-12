@@ -244,7 +244,7 @@ func (s *Server) deliveryTrafficPackets(bindings []db.FindingTrafficBinding) (st
 	if err != nil {
 		return "", "", err
 	}
-	return requestPacket, responsePacket, nil
+	return redactDeliveryPacket(requestPacket), redactDeliveryPacket(responsePacket), nil
 }
 
 const missingTrafficPacket = "未保留可复测的 HTTP 原始流量；此处不生成 Burp 报文，请在修复验证时补充。"

@@ -60,6 +60,8 @@ func (s *Server) seedFindingTrafficTools() {
 		fields := []string{"counterevidence", "evidence_quotes"}
 		if key == "report_finding" {
 			fields = append(fields, "traffic_refs", "evidence_hint_id")
+		} else {
+			fields = append(fields, "evidence_version")
 		}
 		for _, name := range fields {
 			if len(properties[name]) == 0 {

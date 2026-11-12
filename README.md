@@ -90,7 +90,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ### 2. 从当前源码构建并启动
 
-从源码构建时，需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync 和 Docker Compose。运行 `./install.sh --prepare-only` 生成本机 `.env` 和随机密码，不会启动容器。LLM API Key 可以留空。
+从源码构建时，需要 macOS 或 Linux、Go 1.26.11+、Node.js/npm、rsync 和 Docker Compose。运行 `./install.sh --prepare-only` 生成本机 `.env` 和随机密码，不会启动容器。LLM API Key 可以留空。
 
 从 `VERSION` 读取同一版本号，用于编译二进制和标记本地镜像：
 

@@ -316,6 +316,36 @@ ORDER BY id`, companyID)
 	return out, rows.Err()
 }
 
+// GetScopePreview returns at most limit rules and the full count for bounded
+// summaries. A minimum row is read so the window count remains available when
+// the caller has already exhausted its display budget.
+func (s *CompanyStore) GetScopePreview(companyID int64, limit int) ([]ScopeRule, int, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	rows, err := s.db.Query(`
+SELECT id, company_id, kind,
+       COALESCE(domain,''), COALESCE(net::text,''), COALESCE(value,''), raw, COALESCE(reason,''), count(*) OVER()
+FROM company_scope
+WHERE company_id = $1
+ORDER BY id
+LIMIT $2`, companyID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]ScopeRule, 0, limit)
+	var total int64
+	for rows.Next() {
+		var rule ScopeRule
+		if err := rows.Scan(&rule.ID, &rule.CompanyID, &rule.Kind, &rule.Domain, &rule.Net, &rule.Value, &rule.Raw, &rule.Reason, &total); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, rule)
+	}
+	return out, int(total), rows.Err()
+}
+
 // AddScope parses and inserts scope lines for a company, then reattributes assets.
 // Returns counts of added, skipped, and invalid lines.
 func (s *CompanyStore) AddScope(companyID int64, lines []string, reason string) (added, skipped, invalid int, errors []string) {

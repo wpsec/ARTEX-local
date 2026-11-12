@@ -57,9 +57,7 @@ func (s *Server) startTaskArchiveWorker() {
 		log.Printf("[task-archive] worker disabled because startup recovery is incomplete")
 		return
 	}
-	s.archiveWG.Add(1)
-	go func() {
-		defer s.archiveWG.Done()
+	s.goBackgroundWith(&s.archiveWG, func() {
 		ticker := time.NewTicker(taskArchivePollInterval)
 		defer ticker.Stop()
 		for {
@@ -73,7 +71,7 @@ func (s *Server) startTaskArchiveWorker() {
 			case <-ticker.C:
 			}
 		}
-	}()
+	})
 	s.notifyTaskArchiveWorker()
 }
 

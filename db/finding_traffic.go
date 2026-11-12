@@ -254,7 +254,7 @@ evidence_check_status=$2,evidence_check_note='流量证据已变化，需重新�
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`UPDATE exploration_nodes SET payload=payload || jsonb_build_object('evidence_check_status',$2,'evidence_check_note',$3)
+	_, err = tx.Exec(`UPDATE exploration_nodes SET payload=payload || jsonb_build_object('evidence_check_status',$2::text,'evidence_check_note',$3::text)
 WHERE id=(SELECT node_id FROM findings WHERE id=$1)`, findingID, EvidenceCheckNotAssessed, "流量证据已变化，需重新核验")
 	return err
 }

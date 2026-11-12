@@ -4,10 +4,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/Autumn-27/norma/llm"
 	"github.com/wpsec/ARTEX-local/agent"
 	"github.com/wpsec/ARTEX-local/db"
 	"github.com/wpsec/ARTEX-local/llmpool"
-	"github.com/Autumn-27/norma/llm"
 )
 
 // LLM 轮询(故障转移)的服务端接线。设计见 docs/LLM轮询设计.md：
@@ -19,7 +19,7 @@ import (
 // newLLMHealthRegistry builds the process-wide circuit-breaker registry, mirroring
 // state into PG so a cooling-off window survives a restart. Writes are async and
 // best-effort — the in-memory copy is authoritative.
-func newLLMHealthRegistry(pg *db.DB) *llmpool.Registry {
+func newLLMHealthRegistry(pg *db.DB, background func(func()) bool) *llmpool.Registry {
 	if pg == nil {
 		return llmpool.NewRegistry(nil, nil)
 	}
@@ -29,14 +29,14 @@ func newLLMHealthRegistry(pg *db.DB) *llmpool.Registry {
 			t := st.OpenUntil
 			h.OpenUntil = &t
 		}
-		go func() {
+		background(func() {
 			if err := pg.SaveLLMHealth(h); err != nil {
 				log.Printf("[llmpool] 熔断状态落库失败: %v", err)
 			}
-		}()
+		})
 	}
 	forget := func(id int64) {
-		go func() { _ = pg.ClearLLMHealth(id) }()
+		background(func() { _ = pg.ClearLLMHealth(id) })
 	}
 	reg := llmpool.NewRegistry(persist, forget)
 	// Restore only windows that haven't expired (LoadLLMHealth filters), so a

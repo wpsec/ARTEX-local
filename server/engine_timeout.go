@@ -53,11 +53,20 @@ func (e *Engine) beginTaskOperation(taskID string) bool {
 	if e.IsDeleting(taskID) {
 		return false
 	}
+	e.runtimeMu.Lock()
+	defer e.runtimeMu.Unlock()
+	if e.stopping {
+		return false
+	}
 	atomic.AddInt64(e.inflightCounter(taskID), 1)
+	e.opWG.Add(1)
 	return true
 }
 
-func (e *Engine) decInflight(taskID string) { atomic.AddInt64(e.inflightCounter(taskID), -1) }
+func (e *Engine) decInflight(taskID string) {
+	atomic.AddInt64(e.inflightCounter(taskID), -1)
+	e.opWG.Done()
+}
 func (e *Engine) inflightCount(taskID string) int64 {
 	return atomic.LoadInt64(e.inflightCounter(taskID))
 }
@@ -143,6 +152,10 @@ func (e *Engine) startDeadlineCoordinator(ctx context.Context, t *Task) {
 	}
 	rt := e.registerTaskRoutines(ctx, t.ID, 1)
 	e.deleteMu.RUnlock()
+	if rt == nil {
+		e.coordStarted.Delete(t.ID)
+		return
+	}
 	runTaskRoutine(rt, func(loopCtx context.Context) { e.deadlineCoordinator(loopCtx, t) })
 }
 

@@ -41,7 +41,7 @@ evidence_quotes=$4::jsonb,counterevidence=$5 WHERE id=$1 RETURNING node_id`,
 		}
 		if nodeID.Valid {
 			_, err = tx.Exec(`UPDATE exploration_nodes SET payload=payload || jsonb_build_object(
-'evidence_check_status',$2,'evidence_check_note',$3,'evidence_quotes',$4::jsonb,'counterevidence',$5)
+'evidence_check_status',$2::text,'evidence_check_note',$3::text,'evidence_quotes',$4::jsonb,'counterevidence',$5::text)
 WHERE id=$1`, nodeID.Int64, status, note, string(raw), counterevidence)
 		}
 		return err

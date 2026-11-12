@@ -516,14 +516,17 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	// summaries in a separate field so their intents never enter this task's
 	// frontier or get mistaken for locally claimable work.
 	out["related_tasks"] = t.relatedTaskOverviews()
-	// coverage：粗略的资产测试覆盖度参考——范围(task_scope)内的资产里，被 fact 碰过的
+	// coverage：授权范围与粗略的资产测试覆盖度参考——范围(task_scope)内的资产里，被 fact 碰过的
 	// 占比 + by_type(按类型的 总数/已测)。要看未测的具体资产由 agent 按需调 list_untested_assets 自行判断。仅任务上下文有。
-	// 资产覆盖度功能关闭时(coverageDisabled)：只保留 host_count(目标主机数的感知信息)，
+	// 资产覆盖度功能关闭时(coverageDisabled)：仍保留授权范围与 host_count，
 	// 丢弃 denominator/tested/pct/by_type/note 等覆盖度度量，避免污染上下文、也不诱导
 	// 已隐藏的 add_task_scope/list_untested_assets。
 	if t.as != nil && t.ts != nil && t.taskID > 0 {
 		{
 			m := map[string]any{}
+			if scope := t.taskScopeOverview(); len(scope) > 0 {
+				m["scope"] = scope
+			}
 			if !t.coverageDisabled {
 				if cov, err := t.as.TaskCoverageWithSources(t.taskID); err == nil {
 					m["denominator"] = cov.Denominator
@@ -547,6 +550,105 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 				out["coverage"] = m
 			}
 		}
+	}
+	return out
+}
+
+func (t *ToolSet) taskScopeOverview() []map[string]any {
+	scopes, count, err := t.as.ListTaskScopePreviewWithSources(t.taskID, relatedOverviewMaxScopePerSource)
+	if err != nil {
+		return []map[string]any{{"scope_unavailable": true}}
+	}
+	if len(scopes) == 0 {
+		return nil
+	}
+	type companyScopePreview struct {
+		rules []db.ScopeRule
+		count int
+		err   error
+	}
+	companyScopeCache := make(map[int64]companyScopePreview)
+	companyScopeRendered := make(map[int64]bool)
+	companyScopeRemaining := relatedOverviewMaxScopePerSource
+	out := make([]map[string]any, 0, len(scopes))
+	for _, scope := range scopes {
+		item := map[string]any{"kind": scope.Kind}
+		switch {
+		case scope.Domain != "":
+			item["value"] = scope.Domain
+		case scope.Net != "":
+			item["value"] = scope.Net
+		case scope.Value != "":
+			item["value"] = scope.Value
+		}
+		if scope.TaskID != t.taskID {
+			item["source_task_id"] = scope.TaskID
+		}
+		if scope.CompanyID != nil {
+			companyID := *scope.CompanyID
+			item["company_id"] = companyID
+			if scope.CompanyName != "" {
+				item["company_name"] = scope.CompanyName
+			}
+			if t.cs != nil {
+				preview, ok := companyScopeCache[companyID]
+				if !ok {
+					limit := companyScopeRemaining
+					if limit < 1 {
+						limit = 1
+					}
+					rules, ruleCount, err := t.cs.GetScopePreview(companyID, limit)
+					preview = companyScopePreview{rules: rules, count: ruleCount, err: err}
+					companyScopeCache[companyID] = preview
+				}
+				if preview.err != nil {
+					item["company_scope_unavailable"] = true
+				} else if !companyScopeRendered[companyID] {
+					item["company_scope_count"] = preview.count
+					if companyScopeRemaining > 0 {
+						rules := preview.rules
+						if len(rules) > companyScopeRemaining {
+							rules = rules[:companyScopeRemaining]
+						}
+						companyScopeRemaining -= len(rules)
+						if preview.count > len(rules) {
+							item["company_scope_truncated"] = true
+						}
+						companyScope := make([]map[string]any, 0, len(rules))
+						keywords := make([]string, 0)
+						for _, rule := range rules {
+							entry := map[string]any{"kind": rule.Kind}
+							switch {
+							case rule.Raw != "":
+								entry["value"] = rule.Raw
+							case rule.Domain != "":
+								entry["value"] = rule.Domain
+							case rule.Net != "":
+								entry["value"] = rule.Net
+							case rule.Value != "":
+								entry["value"] = rule.Value
+							}
+							companyScope = append(companyScope, entry)
+							if rule.Kind == "keyword" && (rule.Raw != "" || rule.Value != "") {
+								keyword := rule.Raw
+								if keyword == "" {
+									keyword = rule.Value
+								}
+								keywords = append(keywords, keyword)
+							}
+						}
+						item["company_scope"] = companyScope
+						item["company_keywords"] = keywords
+					}
+					companyScopeRendered[companyID] = true
+				}
+			}
+		}
+		out = append(out, item)
+	}
+	if count > len(scopes) && len(out) > 0 {
+		out[0]["scope_count"] = count
+		out[0]["scope_truncated"] = true
 	}
 	return out
 }
