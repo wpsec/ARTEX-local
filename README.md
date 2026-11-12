@@ -1,7 +1,6 @@
 > **`main` 分支说明**
-> 本分支是独立的安全维护备份，只接受漏洞修复，不合入整合、优化或功能开发。
-> 日常开发请使用 `artex-iteration-dev`，完成后合入 `artex-iteration`。
-> 如需将 `main` 上的漏洞修复纳入整合版，应单独 cherry-pick；不得将整合分支合入 `main`。
+> 本分支保留原始 ARTEX 源码基线。本次仅补充衍生版本入口说明，后续衍生开发不再修改 `main`。
+> 衍生版本地址：[wpsec/ARTEX-local](https://github.com/wpsec/ARTEX-local)，活跃整合分支为 [`artex-iteration`](https://github.com/wpsec/ARTEX-local/tree/artex-iteration)，日常开发分支为 `artex-iteration-dev`。
 
 <div align="center">
 
@@ -54,16 +53,6 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
 [AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
 
-
-## 资产同步（ScopeSentry）
-
-支持从 [ScopeSentry](https://github.com/Autumn-27/ScopeSentry) 直接同步资产数据，免去重复收集：
-
-- 在「**资产同步**」页填 ScopeSentry 的地址与 API Key，接入数据源；
-- 按**项目**或**任务**维度选择要同步的目标与资产类型（域名 / 子域 / IP / 端口 / 站点 / 端点…）；
-- 一键导入并按公司资产范围归并，直接进入 ARTEX 的资产图供 agent 探索使用。
-
----
 
 ## 首次部署：本地构建与 Docker
 
