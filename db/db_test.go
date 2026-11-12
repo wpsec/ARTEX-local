@@ -55,26 +55,18 @@ func TestApplySchemaRetriesOnlyDeadlocks(t *testing.T) {
 func TestBuiltinSkillVisibilityDefaults(t *testing.T) {
 	wantSkills := []string{
 		"api-recon",
-		"analyzing-android-malware-with-apktool",
-		"analyzing-golang-malware-with-ghidra",
-		"analyzing-linux-elf-malware",
-		"analyzing-malware-behavior-with-cuckoo-sandbox",
-		"analyzing-network-traffic-of-malware",
-		"analyzing-packed-malware-with-upx-unpacker",
-		"application-security-testing",
-		"deobfuscating-javascript-malware",
-		"web-app-penetration-testing",
 		"api-security-testing",
-		"owasp-top-10-testing",
-		"find-security-vulnerabilities-in-code",
-		"reverse-engineering-router",
-		"analyzing-uefi-bootkit-persistence",
+		"application-security-testing",
 		"authorized-pentest-router",
 		"conducting-internal-network-penetration-test",
-		"conducting-cloud-penetration-testing",
-		"conducting-mobile-app-penetration-test",
-		"conducting-social-engineering-penetration-test",
-		"authorized-red-team-operations",
+		"find-security-vulnerabilities-in-code",
+		"owasp-top-10-testing",
+		"playwright-cli",
+		"scopesentry",
+		"web-app-penetration-testing",
+	}
+	if len(builtinSkillVisibility) != len(wantSkills) {
+		t.Errorf("default Skill count=%d, want %d", len(builtinSkillVisibility), len(wantSkills))
 	}
 	for _, name := range wantSkills {
 		got := builtinSkillVisibility[name]

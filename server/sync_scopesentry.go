@@ -55,7 +55,11 @@ func (s *Server) scopeSentryClient(ctx context.Context) (*mcphttp.Client, error)
 	if m.URL == "" {
 		return nil, fmt.Errorf("数据源 %s 未配置 URL，请先配置", scopeSentryMCPName)
 	}
-	return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+	env, err := resolveMCPEnv(m.Env)
+	if err != nil {
+		return nil, err
+	}
+	return mcphttp.New(ctx, m.Name, m.URL, env, m.Insecure)
 }
 
 // envHasValue reports whether the env/header map has any non-empty value
@@ -91,7 +95,8 @@ func (s *Server) syncSSStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, resp)
 		return
 	}
-	configured := m.URL != "" && envHasValue(m.Env)
+	env, envErr := resolveMCPEnv(m.Env)
+	configured := m.URL != "" && envErr == nil && envHasValue(m.Env)
 	resp["configured"] = configured
 	resp["enabled"] = m.Enabled
 	resp["url"] = m.URL
@@ -102,7 +107,7 @@ func (s *Server) syncSSStatus(w http.ResponseWriter, r *http.Request) {
 	if configured && m.Enabled {
 		ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 		defer cancel()
-		if cl, cerr := mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure); cerr == nil {
+		if cl, cerr := mcphttp.New(ctx, m.Name, m.URL, env, m.Insecure); cerr == nil {
 			if _, terr := cl.Tools(ctx); terr == nil {
 				resp["reachable"] = true
 			}

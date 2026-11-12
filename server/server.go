@@ -230,6 +230,14 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		if err := s.seedFindingRetester(); err != nil {
 			log.Printf("[retester] seed: %v", err)
 		}
+		if err := m.pg.RemoveBundledBloodHoundMCP(); err != nil {
+			log.Printf("[mcp] 移除已内置的 BloodHound MCP 配置失败: %v", err)
+		}
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("ARTEX_BUNDLED_MCP_DEFAULTS")), "true") {
+			if err := m.pg.SeedBuiltinMCPServers(); err != nil {
+				log.Printf("[mcp] 内置 MCP 默认配置播种失败: %v", err)
+			}
+		}
 		go s.evidenceStore().RunGC(s.ctx)
 		s.seedPythonInterpreter()     // 自定义脚本工具:开机检测 python 解释器入库(仅空时)
 		go newScheduler(s).Run(s.ctx) // P3 触发器调度(定时/finding/目标事件),仅自定义 agent

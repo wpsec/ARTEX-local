@@ -8,7 +8,36 @@ ok(){   printf '\033[32m[+]\033[0m %s\n' "$*"; }
 warn(){ printf '\033[33m[!]\033[0m %s\n' "$*"; }
 die(){  printf '\033[31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 ask(){  local p="$1" d="${2:-}" a; read -rp "$p${d:+ [$d]}: " a; echo "${a:-$d}"; }
-rand(){ head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24; }
+rand(){ od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
+
+env_value(){
+  awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; found=1; exit } END { if (!found) print "" }' .env
+}
+
+set_env_value(){
+  local key="$1" value="$2"
+  if grep -q "^${key}=" .env; then
+    sed -i.bak "s|^${key}=.*|${key}=${value}|" .env
+    rm -f .env.bak
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> .env
+  fi
+}
+
+ensure_env_default(){
+  local key="$1" value="$2"
+  if ! grep -q "^${key}=" .env; then
+    set_env_value "$key" "$value"
+  fi
+}
+
+ensure_env_secret(){
+  local key="$1" current
+  current="$(env_value "$key")"
+  if [ -z "$current" ]; then
+    set_env_value "$key" "$(rand)"
+  fi
+}
 
 # ── docker 环境检测 / 自动安装 ───────────────────
 ensure_docker(){
@@ -30,27 +59,37 @@ ensure_docker(){
   esac
 }
 
-# ── ① 全部 Docker ───────────────────────────────
-install_docker(){
-  ensure_docker
+prepare_docker_env(){
   if [ ! -f .env ]; then
     cp .env.example .env 2>/dev/null || true
-    local pw key
-    pw="$(ask 'Postgres 密码（回车随机生成）' "$(rand)")"
+    local key
     key="$(ask 'ANTHROPIC_API_KEY（可留空，后续在 UI 配）' '')"
-    sed -i.bak "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${pw}|" .env
-    sed -i.bak "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=${key}|" .env
-    rm -f .env.bak
-    ok "已生成 .env（POSTGRES_PASSWORD 已设置）"
+    set_env_value ANTHROPIC_API_KEY "$key"
   else
     info "沿用已存在的 .env"
   fi
+  ensure_env_secret POSTGRES_PASSWORD
+  ensure_env_default ARTEX_ZAP_ENABLED true
+  ensure_env_default ARTEX_BUNDLED_MCP_DEFAULTS true
+  chmod 600 .env
+  ok "已准备本机数据库凭据（.env 权限为 0600）"
+}
+
+# ── ① 全部 Docker ───────────────────────────────
+install_docker(){
+  ensure_docker
+  prepare_docker_env
   info "拉取镜像并启动…"
-  docker compose pull || true
+  docker compose pull
   docker compose up -d
   ok "启动完成 → http://localhost:8787"
   info "查看日志：docker compose logs -f artex"
 }
+
+if [ "${1:-}" = "--prepare-only" ]; then
+  prepare_docker_env
+  exit 0
+fi
 
 # ── ② 本地编译运行 ──────────────────────────────
 install_local(){

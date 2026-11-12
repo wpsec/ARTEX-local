@@ -32,7 +32,6 @@
  *   "waitMs": 1200, "perRouteMs": 900, "headless": true
  * }
  */
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const fs = require('fs');
 const path = require('path');
 
@@ -77,7 +76,9 @@ function neutralize(txt, n) {
       Object.assign(j, n.flags || {});
       return JSON.stringify(j);
     }
-  } catch (e) {}
+  } catch (e) {
+    if (process.env.DEBUG) console.warn('[json] response was not valid JSON:', e.message);
+  }
   return txt;
 }
 
@@ -94,7 +95,7 @@ function neutralize(txt, n) {
     process.env.HTTP_PROXY = cfg.proxy;
     process.env.HTTPS_PROXY = cfg.proxy;
   }
-  const launchArgs = ['--no-sandbox', '--disable-dev-shm-usage', '--ignore-certificate-errors'];
+  const launchArgs = ['--no-sandbox', '--disable-dev-shm-usage'];
   if (cfg.proxy) launchArgs.push(`--proxy-server=${cfg.proxy}`);
   const browser = await puppeteer.launch({
     executablePath: cfg.chromium, headless: cfg.headless ? 'new' : false,
@@ -121,7 +122,8 @@ function neutralize(txt, n) {
   // inject localStorage on every document
   if (cfg.localStorage) {
     await page.evaluateOnNewDocument((kv) => {
-      try { for (const k in kv) localStorage.setItem(k, kv[k]); } catch (e) {}
+      try { for (const k in kv) localStorage.setItem(k, kv[k]); }
+      catch (e) { console.warn('[storage] localStorage injection failed:', e.name); }
     }, cfg.localStorage);
   }
   // fallback: block full-page navigations to the login url
@@ -135,7 +137,9 @@ function neutralize(txt, n) {
       const a = Location.prototype.assign, r = Location.prototype.replace;
       Location.prototype.assign = function (v) { if (bad(v)) return; return a.call(this, v); };
       Location.prototype.replace = function (v) { if (bad(v)) return; return r.call(this, v); };
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[navigation] login redirect suppression unavailable:', e.name);
+    }
   }, cfg.loginUrlPattern);
 
   await page.setRequestInterception(true);
@@ -174,6 +178,7 @@ function neutralize(txt, n) {
       if (cfg.captureResponses) { entry.resp = t.slice(0, cfg.respMax); entry.ct = r.headers.get('content-type') || ''; }
       req.respond({ status: 200, contentType: 'application/json', body: neutralize(t, cfg.neutralize) });
     } catch (e) {
+      console.warn('[api] request forwarding failed; returning an empty mock response:', e.name);
       req.respond({ status: 200, contentType: 'application/json', body: '{"response_code":0,"code":0,"data":{}}' });
     }
   });
@@ -200,7 +205,8 @@ function neutralize(txt, n) {
   const perRoute = {};
   for (const rt of routes) {
     const before = rec.length;
-    try { await page.goto(origin + rt, { waitUntil: cfg.waitUntil, timeout: cfg.routeTimeout }); } catch (e) {}
+    try { await page.goto(origin + rt, { waitUntil: cfg.waitUntil, timeout: cfg.routeTimeout }); }
+    catch (e) { console.warn('[route] navigation failed; dynamic API coverage may be incomplete:', e.name); }
     await new Promise(r => setTimeout(r, cfg.perRouteMs));
     const fresh = [...new Set(rec.slice(before).map(r => r.m + ' ' + r.u))];
     perRoute[rt] = fresh;

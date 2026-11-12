@@ -13,7 +13,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 **本仓库是 ARTEX 的独立修改版本，基于原始 ARTEX 项目源码继续开发，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。本声明更新于 2026-11-07，来源和许可说明见 [NOTICE.md](NOTICE.md)。**
 
-📦 **原始项目已停止维护。Docker 镜像与预编译 Release 尚不可用，请按下方说明从源码本地构建容器并运行。**
+📦 **原始项目已停止维护。当前仓库独立维护源码、Docker Compose、容器镜像与 Release；测试当前源码请按下方步骤本地构建。**
 
 </div>
 
@@ -68,38 +68,42 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 ---
 
-## 首次部署：本地构建与 Docker
+## 首次部署：Docker
 
-本项目是 ARTEX 的独立衍生版本，基于原项目停止维护前的源码继续开发；版本检查和发布物均由当前仓库维护。当前项目尚未发布容器镜像或预编译 Release 时，可按下列步骤从本地源码构建。首次构建仍需联网下载 Docker 基础镜像及 Debian、Node.js、npm 和 Playwright 依赖。
+默认 Compose 部署只启动 ARTEX 和 PostgreSQL。OWASP ZAP 作为 ARTEX 容器内的进程运行，并通过内置 MCP 提供 Web 测试工具。
 
-需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync、Docker Engine 和 Docker Compose。
+需要 Docker Engine 和 Docker Compose。
 
-### 1. 配置数据库
+### 1. 生成本机配置并启动
 
 ```bash
-if [ ! -f .env ]; then cp .env.example .env; fi
+./install.sh
 ```
 
-编辑 `.env`，将 `POSTGRES_PASSWORD` 替换为唯一的强密码；已有 `.env` 时保留现有配置。LLM API Key 可以先留空，登录后再在系统设置中配置。
+选择 Docker 安装。脚本会在本机 `.env` 中为 ARTEX PostgreSQL 生成随机凭据，并设为仅当前用户可读写，然后拉取镜像并启动。`.env` 不要提交到仓库。LLM API Key 可以先留空，登录后再在系统设置中配置。
 
-### 2. 编译当前平台对应的 Linux 二进制
+首次启动完成后打开 **http://localhost:8787**，进入 `/setup` 设置 ARTEX 管理员密码。
+
+在「系统配置 → MCP」中可以查看 ZAP 工具。新部署会自动创建并授权内置 ZAP MCP；若不需要 Web 扫描，可在 `.env` 中设置 `ARTEX_ZAP_ENABLED=false`。
+
+### 2. 从当前源码构建并启动
+
+测试尚未发布到 GHCR 的当前 checkout 时，需要 macOS 或 Linux、Go 1.26.10+、Node.js/npm、rsync。运行 `./install.sh --prepare-only` 生成本机 `.env` 和随机密码，不会启动容器。LLM API Key 可以留空。
+
+编译当前平台对应的 Linux 二进制：
 
 ```bash
 arch="$(go env GOARCH)"
 ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
 ```
 
-该命令会安装前端依赖、静态构建 Next.js 前端并编译 Go 后端。`build:static` 使用 Webpack；生成的前端资源会嵌入 Linux 二进制。
-
-### 3. 构建本地镜像并启动
-
-> 根目录的 `docker-compose.yml` 使用本项目 GHCR 镜像 `ghcr.io/wpsec/artex-local`。本文命令同时加载 `docker-compose.local.yml`，以本地源码构建的 `artex:local` 运行 ARTEX。
+该命令会安装前端依赖、静态构建 Next.js 前端并编译 Go 后端。`build:static` 使用 Webpack；生成的前端资源会嵌入 Linux 二进制。然后构建本地镜像并启动完整 Compose：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```
 
-首次启动后打开 **http://localhost:8787**，进入 `/setup` 设置管理员密码。Postgres 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。
+PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。已有部署中历史 BloodHound 容器与数据卷不会由此次源码变更自动清理。
 
 ## 日常使用
 
@@ -122,7 +126,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml logs -f artex
 docker compose -f docker-compose.yml -f docker-compose.local.yml down
 ```
 
-`down` 会移除容器，但保留 `pgdata` 卷以及项目目录下的 `data/`、`skills/`；下次仍用上面的 `up -d` 启动。
+`down` 会移除当前 Compose 定义的容器，但保留 PostgreSQL 卷以及项目目录下的 `data/`、`skills/`；下次仍用上面的 `up -d` 启动。由旧版本创建的 BloodHound 容器不再属于当前 Compose 服务，不会在此操作中自动删除。
 
 ## 本地重建
 
@@ -190,6 +194,21 @@ server {
 
 ## 开发
 
+### MCP 预设试用
+
+默认 Compose 只启动 ARTEX 和 PostgreSQL。ZAP 作为 ARTEX 容器内的进程运行，首次初始化后会在 MCP 页面显示，并向内置 Agent 提供工具。通用 MCP 管理仍可连接用户自行部署的外部服务。
+
+- **OWASP ZAP**：ZAP `2.17.0` 和 MCP Integration add-on `0.4.0` 随 ARTEX 镜像提供，并默认启动。需要节省本机资源时，可在 `.env` 中设 `ARTEX_ZAP_ENABLED=false`。
+- ZAP 的传统 Spider、被动扫描和主动扫描默认可用。AJAX Spider / Client Spider 的 Firefox 浏览器支持需要额外浏览器与驱动，当前默认镜像未包含；可用内置 Playwright MCP 探索现代 SPA。详见 [ZAP Selenium 文档](https://www.zaproxy.org/docs/desktop/addons/selenium/)。
+
+### 内置 Skill
+
+ARTEX 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可使用用户通过通用 MCP 配置接入的 BloodHound；未接入时会继续执行其他可用检查。
+
+启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。ScopeSentry Skill 仅在 ARTEX 已连接 ScopeSentry 服务且任务需要其数据时使用。
+
+LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。BloodHound 默认集成移除后的部署说明见[开发文档](dev_docs/dev/2026-11-12-bloodhound-integration-removal.md)。
+
 ### 手动漏洞复测
 
 任务详情的「复测」页签可分页选择本任务的漏洞、查看历次结论和证据，并手动发起复测。启动后保留当前页签，显示转圈图标和「复测中」；确认修复后同步更新漏洞状态。
@@ -202,14 +221,61 @@ server {
 
 ### 本地运行与测试
 
+`./dev.sh` 使用 `8787` 和 `8788` 端口；若本地 Docker Compose 的 ARTEX 容器正在运行，先停止该服务，避免端口冲突。开发结束后再启动容器：
+
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml stop artex
 ./dev.sh    # 后端(:8787) + 流量代理(:8788) + 前端 next dev(:5173) → http://localhost:5173
+# Ctrl-C 退出 ./dev.sh 后
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d artex
 ```
 
 - 后端：`go run ./cmd/artex`（不带 `-tags embedui` 则不内嵌前端）
 - 前端：`cd web && npm run dev`（`/api` 反代到后端，带热更新）
-- 测试：`go test ./...`
+- ZAP 定向测试：
+
+  ```bash
+  go test ./cmd/artex -run 'Test(RedactingWriterRedactsSecretAcrossWrites|WriteZAPConfigIsPrivate|StartZAPRuntimeDisabledByDefault|StartZAPRuntimeRequiresKeyWhenEnabled)$' -count=1
+  ```
+
+- MCP 凭据与管理 API 定向测试：先将 `ARTEX_PG_DSN` 指向隔离的临时 PostgreSQL 测试库，再运行：
+
+  ```bash
+  ARTEX_PG_DSN='<隔离测试库 DSN>' go test ./server -run 'Test(MgmtAPI|ResolveMCPEnvWithLookup|ResolveMCPEnvWithLookupMissingSecret|ResolveMCPEnvWithLookupRejectsMalformedReference|ResolveMCPEnvKeepsReferenceOutOfStoredConfig|ConnectMCPHTTPResolvesSecretAsHeader|ScopeSentryStatusResolvesSecretHeader)$' -count=1
+  ```
+
+  这些测试会读写 MCP 配置和测试表，不要连接正在使用的 ARTEX 数据库。未配置 DSN 时，依赖 PostgreSQL 的测试可能跳过。
+- 临时 PostgreSQL 测试库示例（仅监听本机；停止容器后测试数据随容器移除）：
+
+  ```bash
+  export ARTEX_TEST_PG_PASSWORD='<本机临时随机密码>'
+  docker run --rm -d --name artex-test-postgres \
+    -e POSTGRES_USER=artex_test \
+    -e POSTGRES_PASSWORD="$ARTEX_TEST_PG_PASSWORD" \
+    -e POSTGRES_DB=artex_test \
+    -p 127.0.0.1:15432:5432 postgres:17-alpine
+  until docker exec artex-test-postgres pg_isready -U artex_test -d artex_test >/dev/null 2>&1; do sleep 1; done
+  export ARTEX_PG_DSN="postgres://artex_test:${ARTEX_TEST_PG_PASSWORD}@127.0.0.1:15432/artex_test?sslmode=disable"
+  ```
+
+- MCP 管理页 Playwright 回归（API 使用 mock，不需要连接真实 ZAP）：
+
+  ```bash
+  cd web
+  npm ci
+  npx playwright install chromium
+  npm run test:e2e -- e2e/mcp-presets.spec.ts
+  ```
+
+- 全 Go 回归：`go test $(go list ./... | grep -v '/data/tasks/')`。本地 `data/tasks` 下忽略的历史 Go 文件不属于仓库测试包；上述命令会排除它们。截至 2026-11-11，已知 `agent.TestGraphOverviewExpandsAssociatedCompanyScope` 和 `server.TestFindingDeliveryReportIsolationAndEvidenceVersion` 仍失败；原因与复核过程见[集成计划历史记录](dev_docs/history/2026-11-08-artex-zap-bloodhound-mcp-integration.md)。
 - Mock 预览（无后端）：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
+
+运行完成后移除一次性测试数据库：
+
+```bash
+docker stop artex-test-postgres
+unset ARTEX_PG_DSN ARTEX_TEST_PG_PASSWORD
+```
 
 ---
 

@@ -7,8 +7,7 @@ metadata:
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/api-security-testing
 mcps:
-  - browser
-  - ScopeSentry
+  - OWASP ZAP
 ---
 
 # API 安全测试
@@ -49,3 +48,5 @@ GraphQL 查询需服从相同授权和资源限制；深度、别名和批处理
 - 若因缺少第二账号、测试对象、协议工具或授权无法证明，使用 `record_fact` 记录待验证线索和缺失条件。
 - 请求样本使用占位符替代凭据；响应只保留证明结论的最小脱敏片段。
 - 报告每类 API 风险的已尝试、已确认和未覆盖情况。不得把空响应、HTTP 200 或某个版本号单独作为漏洞证据。
+
+API 扫描时主动使用已配置的 OWASP ZAP MCP 工具；只做接口盘点时不要启动扫描。MCP 不可用时记录限制，不声称已完成 ZAP 覆盖。

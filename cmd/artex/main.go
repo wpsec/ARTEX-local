@@ -23,8 +23,8 @@ import (
 )
 
 // version is the build version, injected at release time via
-// -ldflags "-X main.version=<tag>". Defaults to "dev" for local builds.
-var version = "dev"
+// -ldflags "-X main.version=<tag>". Defaults to the current app version for manual builds.
+var version = "2.2.1"
 
 const banner = `
     _    ____ _____ _______  __
@@ -95,9 +95,38 @@ func run() int {
 	ctx, shutdown := shutdownContext(sigCtx)
 	defer shutdown(agent.AbortShutdown)
 
+	zap, err := startZAPRuntime()
+	if err != nil {
+		log.Printf("[zap] 启动失败，ARTEX 将继续运行: %v", err)
+	}
+	defer func() {
+		if zap != nil {
+			zap.Close()
+		}
+	}()
+	var zapReady <-chan error
+	var zapDone <-chan struct{}
+	if zap != nil {
+		zapReady = zap.Ready()
+		zapDone = zap.Done()
+		select {
+		case readyErr := <-zapReady:
+			zapReady = nil
+			if readyErr != nil {
+				log.Printf("[zap] MCP listener 未就绪，ARTEX 将继续运行: %v", readyErr)
+				zap.Close()
+				zap = nil
+				zapDone = nil
+			}
+		case <-ctx.Done():
+			return 0
+		}
+	}
+
 	mgr, err := server.NewManager(*dataDir, *proxy)
 	if err != nil {
-		log.Fatalf("open stores: %v", err)
+		log.Printf("open stores: %v", err)
+		return 1
 	}
 	defer mgr.Close()
 
@@ -118,23 +147,52 @@ func run() int {
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	serveErr := make(chan error, 1)
 
 	go func() {
 		log.Printf("ARTEX %s backend listening on %s (data=%s, workers=%d)", version, *addr, *dataDir, mgr.Workers())
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("serve: %v", err)
+			serveErr <- err
 		}
 	}()
 
-	// Two ways out: a signal (normal stop → exit 0, the start script stops looping)
-	// or a staged update / rollback (→ exit 75, the script relaunches us and the
-	// bootstrap above installs the new build).
+	// Exit codes tell start.sh whether to stop, restart after a failure, or relaunch
+	// after a staged update so Bootstrap can install the new build.
 	code := 0
-	select {
-	case <-ctx.Done():
-	case <-server.RestartRequested():
-		code = selfupdate.ExitRestart
-		shutdown(agent.AbortShutdown)
+
+runLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			break runLoop
+		case <-zapDone:
+			if ctx.Err() == nil {
+				log.Printf("[zap] MCP 服务意外退出: %v，重启 ARTEX 进程以恢复 ZAP", zap.exitErr)
+				code = 1
+			}
+			zap.Close()
+			zap = nil
+			zapDone = nil
+			zapReady = nil
+			break runLoop
+		case err := <-serveErr:
+			log.Printf("serve: %v", err)
+			code = 1
+			shutdown(agent.AbortShutdown)
+			break runLoop
+		case readyErr := <-zapReady:
+			if readyErr != nil {
+				log.Printf("[zap] MCP listener 未就绪，ARTEX 将继续运行: %v", readyErr)
+				zap.Close()
+				zap = nil
+				zapDone = nil
+			}
+			zapReady = nil
+		case <-server.RestartRequested():
+			code = selfupdate.ExitRestart
+			shutdown(agent.AbortShutdown)
+			break runLoop
+		}
 	}
 
 	log.Println("shutting down...")

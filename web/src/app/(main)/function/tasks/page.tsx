@@ -2380,6 +2380,7 @@ function SourceTaskPicker({
   const tasksByID = React.useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const taskIDs = React.useMemo(() => tasks.map((task) => task.id), [tasks]);
   const atLimit = value.length >= MAX_SOURCE_TASKS;
+  const taskLabel = (task: Task) => task.name?.trim() || task.description?.trim() || `任务 #${task.id}`;
 
   const handleValueChange = (next: string[]) => {
     onValueChange(next.slice(0, MAX_SOURCE_TASKS));
@@ -2390,7 +2391,7 @@ function SourceTaskPicker({
       items={taskIDs}
       itemToStringValue={(taskID) => {
         const task = tasksByID.get(taskID);
-        return task ? `${task.id} ${task.description} ${task.goal}` : taskID;
+        return task ? `${task.id} ${taskLabel(task)} ${task.description} ${task.goal}` : taskID;
       }}
       multiple
       value={value}
@@ -2398,9 +2399,15 @@ function SourceTaskPicker({
     >
       <ComboboxChips>
         <ComboboxValue>
-          {value.map((taskID) => (
-            <ComboboxChip key={taskID}>#{taskID}</ComboboxChip>
-          ))}
+          {value.map((taskID) => {
+            const task = tasksByID.get(taskID);
+            const label = task ? taskLabel(task) : "未知任务";
+            return (
+              <ComboboxChip key={taskID} className="max-w-[18rem]" title={`#${taskID} · ${label}`}>
+                <span className="truncate">#{taskID} · {label}</span>
+              </ComboboxChip>
+            );
+          })}
         </ComboboxValue>
         <ComboboxChipsInput
           id="source-tasks"
@@ -2418,8 +2425,11 @@ function SourceTaskPicker({
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
-                      #{taskID} · {task?.description ?? "未知任务"}
+                      #{taskID} · {task ? taskLabel(task) : "未知任务"}
                     </p>
+                    {task?.name?.trim() && task.description && (
+                      <p className="text-muted-foreground truncate text-xs">{task.description}</p>
+                    )}
                     {task?.goal && <p className="text-muted-foreground truncate text-xs">{task.goal}</p>}
                   </div>
                   {task && <StatusBadge domain="task" value={task.status} />}

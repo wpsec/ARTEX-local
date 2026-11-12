@@ -929,6 +929,100 @@ func (d *DB) SaveMCP(m *MCPServer) (int64, error) {
 	return m.ID, err
 }
 
+// RemoveBundledBloodHoundMCP removes only the obsolete built-in MCP command.
+// Records sharing only the display name are preserved.
+func (d *DB) RemoveBundledBloodHoundMCP() error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var marker string
+	err = tx.QueryRow(`
+INSERT INTO settings(key, value) VALUES ('builtin_bloodhound_removed_v1', 'done')
+ON CONFLICT (key) DO NOTHING
+RETURNING key`).Scan(&marker)
+	if err == sql.ErrNoRows {
+		return tx.Commit()
+	}
+	if err != nil {
+		return fmt.Errorf("claim bundled BloodHound cleanup: %w", err)
+	}
+
+	const command = "/opt/bloodhound-mcp/.venv/bin/bloodhound-mcp"
+	if _, err := tx.Exec(`
+DELETE FROM agent_visibility
+WHERE resource_kind='mcp'
+  AND resource_id IN (
+    SELECT id FROM mcp_servers
+    WHERE name='BloodHound' AND transport='stdio' AND command=$1
+  )`, command); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+DELETE FROM mcp_servers
+WHERE name='BloodHound' AND transport='stdio' AND command=$1`, command); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SeedBuiltinMCPServers installs the bundled ZAP MCP default once. Existing
+// records and visibility choices are left untouched.
+func (d *DB) SeedBuiltinMCPServers() error {
+	tx, err := d.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var marker string
+	err = tx.QueryRow(`
+INSERT INTO settings(key, value) VALUES ('builtin_mcp_defaults_v1', 'done')
+ON CONFLICT (key) DO NOTHING
+RETURNING key`).Scan(&marker)
+	if err == sql.ErrNoRows {
+		return tx.Commit()
+	}
+	if err != nil {
+		return fmt.Errorf("claim builtin MCP seed: %w", err)
+	}
+
+	servers := []struct {
+		name, transport, command, args, env, url string
+	}{
+		{
+			name:      "OWASP ZAP",
+			transport: "http",
+			args:      `[]`,
+			env:       `{"Authorization":"${ARTEX_MCP_SECRET_ZAP_KEY}"}`,
+			url:       "http://127.0.0.1:8282",
+		},
+	}
+	for _, server := range servers {
+		var id int64
+		err := tx.QueryRow(`
+INSERT INTO mcp_servers(name, transport, command, args, env, url, enabled, insecure)
+VALUES ($1, $2, NULLIF($3,''), $4::jsonb, $5::jsonb, NULLIF($6,''), true, false)
+ON CONFLICT (name) DO NOTHING
+RETURNING id`, server.name, server.transport, server.command, server.args, server.env, server.url).Scan(&id)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("seed %s MCP: %w", server.name, err)
+		}
+		if _, err := tx.Exec(`
+INSERT INTO agent_visibility(agent_id, resource_kind, resource_id, mcp_tool_name, enabled)
+SELECT id, 'mcp', $1, '', true FROM agents WHERE builtin=true
+ON CONFLICT (agent_id, resource_kind, resource_id, mcp_tool_name) DO NOTHING`, id); err != nil {
+			return fmt.Errorf("seed %s MCP visibility: %w", server.name, err)
+		}
+	}
+	return tx.Commit()
+}
+
 func (d *DB) DeleteMCP(id int64) error {
 	tx, err := d.Begin()
 	if err != nil {

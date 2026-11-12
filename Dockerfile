@@ -10,6 +10,18 @@
 #   cp -r web/out server/webui/dist
 #   CGO_ENABLED=0 GOARCH=amd64 go build -tags embedui -o dist/amd64/artex ./cmd/artex
 #   docker build -t artex:local .
+ARG ZAP_VERSION=2.17.0
+FROM ghcr.io/zaproxy/zaproxy:${ZAP_VERSION} AS zap-runtime
+ARG ZAP_VERSION=2.17.0
+ARG ZAP_MCP_ADDON_VERSION=0.4.0
+RUN zap.sh -cmd -silent -addoninstall mcp \
+    && installed_addons="$(zap.sh -cmd -silent -addonlist)" \
+    && printf '%s\n' "$installed_addons" \
+      | grep -Eiq "mcp.*${ZAP_MCP_ADDON_VERSION}|${ZAP_MCP_ADDON_VERSION}.*mcp" \
+    && cp /home/zap/.ZAP/plugin/*.zap /zap/plugin/ \
+    && cp /usr/share/common-licenses/Apache-2.0 /zap/ApacheLicense-2.0.txt \
+    && curl -fsSL "https://raw.githubusercontent.com/zaproxy/zaproxy/v${ZAP_VERSION}/LEGALNOTICE.md" -o /zap/LEGALNOTICE.md
+
 FROM python:3.12-slim-bookworm
 ARG TARGETARCH
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
@@ -17,6 +29,7 @@ ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates ripgrep curl wget vim git jq unzip \
       dnsutils iputils-ping netcat-openbsd inetutils-telnet whois nmap \
+      openjdk-17-jre-headless \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -29,7 +42,10 @@ RUN npm install -g @playwright/mcp@latest @playwright/cli@latest playwright@late
     && playwright-cli --help \
     && playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=zap-runtime /zap /opt/zap
+ENV PATH="/opt/zap:${PATH}"
 WORKDIR /app
+COPY THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
 # 预编译好的对应架构二进制（dist/amd64/artex 或 dist/arm64/artex）
 COPY dist/${TARGETARCH}/artex /app/artex
 # 守护启动脚本：进程退出后按退出码决定是否重新拉起，页面一键更新靠它完成换装。

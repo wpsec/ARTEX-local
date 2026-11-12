@@ -4,3 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      ARTEX_ZAP_ENABLED: ${ARTEX_ZAP_ENABLED:-true}
+      ARTEX_BUNDLED_MCP_DEFAULTS: ${ARTEX_BUNDLED_MCP_DEFAULTS:-true}

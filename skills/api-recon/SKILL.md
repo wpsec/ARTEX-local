@@ -1,14 +1,15 @@
 ---
 name: api-recon
-description: 收集网站API接口时调用该skill。
+description: 仅当用户要求盘点已授权 Web 应用的 API 路径、方法、参数、前端路由或页面触发点时使用；不执行漏洞扫描或主动攻击验证。
 mcps:
-  - ScopeSentry
   - browser
 ---
 
 # API Recon（前端接口侦察）
 
 在**已授权**前提下，尽可能完整地发现：**后端 API**（路径、方法、参数、响应体）、**前端路由**、**UI 功能触发点**（Tab、弹窗、表格操作等）。
+
+交互式页面探索使用已启用的 Browser MCP；只有需要可复现脚本或导出自动化产物时才使用 `playwright-cli`。不要对同一浏览器操作同时调用两种入口。Browser MCP 不可用时，仅在脚本化流程适合任务时改用 CLI，否则记录动态交互覆盖缺口。随附脚本是可选参考，运行前按文档安装依赖并核对配置；默认保持 TLS 证书校验。
 
 ---
 
@@ -302,6 +303,8 @@ coverage 每轮导出：`__API_RECON_LOG__`、`__API_RECON_DETAIL__`、`__API_RE
 cd recon && npm install
 node runtime_harvest.js config.json
 ```
+
+`runtime_harvest.js` 是可选参考脚本，不是 Browser MCP 的前置依赖。它需要 `puppeteer-core` 和 Chromium；运行前确认 `config.chromium` 指向可执行浏览器。ARTEX 镜像内 Chromium 路径由 Playwright 管理，不能假定为 `/usr/bin/chromium`。脚本默认验证 TLS 证书；遇到自签证书时配置受信任 CA，不要关闭校验。
 
 ### 3b — coverage 动态枚举（必做）
 

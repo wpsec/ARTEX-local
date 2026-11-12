@@ -105,7 +105,7 @@ func TestBuiltinSkillVisibilitySeedsAndPreservesOptOut(t *testing.T) {
 		"api-security-testing",
 		"owasp-top-10-testing",
 		"find-security-vulnerabilities-in-code",
-		"analyzing-golang-malware-with-ghidra",
+		"playwright-cli",
 	}
 	for _, name := range skillNames {
 		if _, err := d.Exec(`DELETE FROM agent_skill_visibility WHERE agent_id=$1 AND skill_name=$2`, ag.ID, name); err != nil {

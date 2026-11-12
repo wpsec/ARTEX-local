@@ -9,3 +9,9 @@
 当前分支工作流：[2026-11-07 分支模型](2026-11-07-branching-model.md)。
 
 单漏洞交付报告：[2026-11-08 交付报告](2026-11-08-delivery-report.md)。
+
+ZAP 与 BloodHound MCP 试点历史说明：[2026-11-08 配置说明](2026-11-08-artex-zap-bloodhound-mcp.md)。
+
+BloodHound 默认集成移除与当前两容器部署：[2026-11-12 开发说明](2026-11-12-bloodhound-integration-removal.md)。
+
+任务发现与 MCP 统计界面修复：[2026-11-12 修复记录](2026-11-12-task-findings-mcp-ui-fixes.md)。

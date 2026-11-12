@@ -6,10 +6,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/wpsec/ARTEX-local/db"
-	"github.com/wpsec/ARTEX-local/mcphttp"
 	"github.com/Autumn-27/norma/mcp"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/mcphttp"
 )
 
 // mcpClient is the shared surface of a connected MCP server (stdio, Streamable HTTP,
@@ -27,18 +27,30 @@ func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
 		if m.Command == "" {
 			return nil, fmt.Errorf("stdio 传输缺少命令")
 		}
-		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewStdioClient(ctx, m.Name, m.Command, env, jsonStrSlice(m.Args)...)
 	case "http":
 		if m.URL == "" {
 			return nil, fmt.Errorf("http 传输缺少 URL")
 		}
 		// env map doubles as HTTP headers (e.g. Authorization).
-		return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
+		}
+		return mcphttp.New(ctx, m.Name, m.URL, env, m.Insecure)
 	case "sse":
 		if m.URL == "" {
 			return nil, fmt.Errorf("sse 传输缺少 URL")
 		}
-		return mcphttp.NewSSE(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
+		}
+		return mcphttp.NewSSE(ctx, m.Name, m.URL, env, m.Insecure)
 	default:
 		return nil, fmt.Errorf("未知传输方式 %q", m.Transport)
 	}

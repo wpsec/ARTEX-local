@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wpsec/ARTEX-local/config"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib" // pgx database/sql driver ("pgx")
+	"github.com/wpsec/ARTEX-local/config"
 )
 
 //go:embed schema.sql
@@ -323,29 +323,16 @@ var defaultSkillAgentKeys = []string{"auto", "pentest", "worker"}
 // filesystem (SkillDir, loaded by norma at runtime); DB only carries this visibility
 // binding. ScopeSentry's MCP still requires separate enablement and configuration.
 var builtinSkillVisibility = map[string][]string{
-	"api-recon":                 defaultSkillAgentKeys,
-	"authorized-pentest-router": defaultSkillAgentKeys,
-	"conducting-internal-network-penetration-test":   defaultSkillAgentKeys,
-	"conducting-cloud-penetration-testing":           defaultSkillAgentKeys,
-	"conducting-mobile-app-penetration-test":         defaultSkillAgentKeys,
-	"conducting-social-engineering-penetration-test": defaultSkillAgentKeys,
-	"authorized-red-team-operations":                 defaultSkillAgentKeys,
-	"application-security-testing":                   defaultSkillAgentKeys,
-	"web-app-penetration-testing":                    defaultSkillAgentKeys,
-	"api-security-testing":                           defaultSkillAgentKeys,
-	"owasp-top-10-testing":                           defaultSkillAgentKeys,
-	"find-security-vulnerabilities-in-code":          defaultSkillAgentKeys,
-	"reverse-engineering-router":                     defaultSkillAgentKeys,
-	"analyzing-android-malware-with-apktool":         defaultSkillAgentKeys,
-	"analyzing-linux-elf-malware":                    defaultSkillAgentKeys,
-	"analyzing-golang-malware-with-ghidra":           defaultSkillAgentKeys,
-	"analyzing-packed-malware-with-upx-unpacker":     defaultSkillAgentKeys,
-	"deobfuscating-javascript-malware":               defaultSkillAgentKeys,
-	"analyzing-uefi-bootkit-persistence":             defaultSkillAgentKeys,
-	"analyzing-network-traffic-of-malware":           defaultSkillAgentKeys,
-	"analyzing-malware-behavior-with-cuckoo-sandbox": defaultSkillAgentKeys,
-	"playwright-cli":                                 defaultSkillAgentKeys,
-	"scopesentry":                                    defaultSkillAgentKeys,
+	"api-recon":                                    defaultSkillAgentKeys,
+	"api-security-testing":                         defaultSkillAgentKeys,
+	"application-security-testing":                 defaultSkillAgentKeys,
+	"authorized-pentest-router":                    defaultSkillAgentKeys,
+	"conducting-internal-network-penetration-test": defaultSkillAgentKeys,
+	"find-security-vulnerabilities-in-code":        defaultSkillAgentKeys,
+	"owasp-top-10-testing":                         defaultSkillAgentKeys,
+	"playwright-cli":                               defaultSkillAgentKeys,
+	"scopesentry":                                  defaultSkillAgentKeys,
+	"web-app-penetration-testing":                  defaultSkillAgentKeys,
 }
 
 // seedBuiltinSkillVisibility binds the shipped built-in skills to their default

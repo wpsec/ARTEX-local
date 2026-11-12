@@ -6,9 +6,6 @@ metadata:
   author: usestrix
   homepage: https://docs.strix.ai
   source: https://github.com/usestrix/strix/tree/main/skills/owasp-top-10-testing
-mcps:
-  - ScopeSentry
-  - browser
 ---
 
 # OWASP Top 10 覆盖评估
@@ -18,6 +15,8 @@ mcps:
 > OWASP 分类来源：[OWASP Top 10:2025](https://top10.owasp.org/2025/)（CC BY 3.0）和 [OWASP API Security Top 10:2023](https://api-security.owasp.org/editions/2023/en/0x10-api-security-risks/)（CC BY-SA 4.0）。本文重排并选择分类名称，改写测试流程以适配 ARTEX；许可和改编说明见 `THIRD-PARTY-NOTICES.txt`。
 
 本 skill 使用来源标注的 OWASP Top 10:2025 与 OWASP API Security Top 10:2023。若用户要求旧版或特定合规版本，先确认并在结果中准确标注版本。OWASP 是风险分类，不代表 ARTEX 能自动或完整测试每个类别。
+
+用户只要求将已有发现映射到 OWASP 类别时，使用现有证据，不启动新扫描。用户要求对目标进行 OWASP 评估时，对授权范围内的 Web、API 或代码工作流调用对应专用 Skill；Web/API 测试由其工作流调用 ZAP，并如实标注未实际执行的类别。
 
 ## OWASP Top 10:2025 分类
 
