@@ -49,7 +49,7 @@ func TestDeliveryReportWithoutBoundTrafficDoesNotInventPackets(t *testing.T) {
 	}
 }
 
-func TestDeliveryReportUsesProofPacketAndRedactsCredentials(t *testing.T) {
+func TestDeliveryReportUsesAllBoundPacketsWithoutRedactingCredentials(t *testing.T) {
 	dataDir := t.TempDir()
 	managerDir := filepath.Join(dataDir, "manager")
 	storeDir := filepath.Join(managerDir, "evidence")
@@ -88,18 +88,27 @@ func TestDeliveryReportUsesProofPacketAndRedactsCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, check := range []struct{ packet, want, absent string }{
-		{request, "POST /proof", "baseline"},
-		{request, "proof request", "baseline request"},
-		{response, "proof response", "baseline response"},
+	for _, check := range []struct{ packet, want string }{
+		{request, "POST /proof"},
+		{request, "baseline request"},
+		{request, "proof request"},
+		{response, "baseline response"},
+		{response, "proof response"},
 	} {
-		if !strings.Contains(check.packet, check.want) || strings.Contains(check.packet, check.absent) {
+		if !strings.Contains(check.packet, check.want) {
 			t.Fatalf("packet did not use the bound proof evidence: %s", check.packet)
 		}
 	}
-	for _, secret := range []string{"query-secret", "header-secret", "session=cookie-secret", "body-secret", "response-cookie", "response-secret"} {
-		if strings.Contains(request+response, secret) {
-			t.Fatalf("delivery packet leaked credential %q: %s\n%s", secret, request, response)
+	for _, evidence := range []struct{ packet, want string }{
+		{request, "access_token=query-secret"},
+		{request, "Authorization: Bearer header-secret"},
+		{request, "Cookie: session=cookie-secret"},
+		{request, `"password":"body-secret"`},
+		{response, "Set-Cookie: session=response-cookie"},
+		{response, `"token":"response-secret"`},
+	} {
+		if !strings.Contains(evidence.packet, evidence.want) {
+			t.Fatalf("delivery packet omitted original evidence %q: %s\n%s", evidence.want, request, response)
 		}
 	}
 }
