@@ -3096,6 +3096,7 @@ export const agents: Agent[] = [
     enabled: true,
     description: "读探索路线、判断目标达成、生成意图",
     max_turns: 0,
+    web_search: true,
     mcp_count: 1,
     skill_count: 2,
     tool_count: 9,
@@ -3124,7 +3125,7 @@ export const agents: Agent[] = [
     description: "claim 意图 → 跑 Kali 工具 → 图写回",
     max_turns: 40,
     run_seconds: 1800,
-    web_search: false,
+    web_search: true,
     interactive_shell: true,
     mcp_count: 2,
     skill_count: 3,
@@ -3152,15 +3153,15 @@ const promptVars: PromptVar[] = [
 ];
 
 const promptVersions: PromptVersion[] = [
-  { version: 3, ts: T("2026-07-25T10:00:00Z"), note: "加强越权探测引导", template_text: "你是 ARTEX 的规划者……" },
-  { version: 2, ts: T("2026-07-20T10:00:00Z"), note: "初版微调", template_text: "你是 ARTEX 的规划者(v2)……" },
+  { version: 3, ts: T("2026-07-25T10:00:00Z"), note: "加强越权探测引导", template_text: "你是 ARTEX-Pro 的规划者……" },
+  { version: 2, ts: T("2026-07-20T10:00:00Z"), note: "初版微调", template_text: "你是 ARTEX-Pro 的规划者(v2)……" },
 ];
 
 export function agentDetail(key: string): AgentDetail {
   const a = agents.find((x) => x.key === key) ?? agents[1];
   return {
     agent: a,
-    prompt: `你是 ARTEX 的「${a.name}」。\n目标：{{.Goal}}\n资产概览：{{.AssetSummary}}\n路线提示：{{.RouteHint}}\n请基于以上信息推进探索，并通过工具把结果写回图。`,
+    prompt: `你是 ARTEX-Pro 的「${a.name}」。\n目标：{{.Goal}}\n资产概览：{{.AssetSummary}}\n路线提示：{{.RouteHint}}\n请基于以上信息推进探索，并通过工具把结果写回图。`,
     variables: promptVars,
     versions: promptVersions,
     visibility: { mcp: [1, 2], skill: ["api-recon", "playwright-cli"] },
@@ -3327,7 +3328,7 @@ export const tools: Tool[] = [
 // ── Settings ─────────────────────────────────────────────────────────────────
 export const settings: Settings = {
   traffic_capture: true,
-  agent_traffic_binding: false,
+  agent_traffic_binding: true,
   llm_record: false,
   web_search_enabled: true,
   web_search_backend: "ddgs",
@@ -3337,6 +3338,8 @@ export const settings: Settings = {
   global_proxy: "",
   python_interpreter: "/usr/bin/python3",
   workers: 3,
+  constraints_inject_planner: true,
+  constraints_inject_worker: true,
   llm_pool_enabled: true,
   llm_pool_bind_fallback: false,
   noa_compaction: false,

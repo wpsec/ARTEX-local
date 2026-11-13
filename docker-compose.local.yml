@@ -1,6 +1,6 @@
 services:
   artex:
-    image: artex:${ARTEX_VERSION:-local}
+    image: artex-pro:${ARTEX_VERSION:-local}
     build:
       context: .
       dockerfile: Dockerfile

@@ -153,15 +153,26 @@ func Open(dsn string) (*DB, error) {
 		return nil, fmt.Errorf("ping postgres (%s): %w", config.Redact(dsn), err)
 	}
 	d := &DB{sqlDB}
+	newDatabase := false
 	// pgx runs multi-statement Exec via the simple protocol when there are no args.
 	// Keep the dedicated lock connection checked out until both DDL and seeding
 	// finish so concurrent application instances cannot initialize out of order.
 	err = withSchemaMigrationLock(context.Background(), sqlDB, func(conn *sql.Conn) error {
+		var settingsTableExists bool
+		if err := conn.QueryRowContext(context.Background(), `SELECT to_regclass('public.settings') IS NOT NULL`).Scan(&settingsTableExists); err != nil {
+			return fmt.Errorf("inspect database initialization state: %w", err)
+		}
+		newDatabase = !settingsTableExists
 		if err := applySchemaWithRetry(context.Background(), conn, time.Sleep); err != nil {
 			return fmt.Errorf("apply schema: %w", err)
 		}
 		if err := d.seedBuiltins(); err != nil {
 			return fmt.Errorf("seed builtins: %w", err)
+		}
+		if newDatabase {
+			if err := d.seedNewDeploymentDefaults(); err != nil {
+				return fmt.Errorf("seed new-deployment defaults: %w", err)
+			}
 		}
 		return nil
 	})
@@ -170,6 +181,45 @@ func Open(dsn string) (*DB, error) {
 		return nil, err
 	}
 	return d, nil
+}
+
+// seedNewDeploymentDefaults runs only when Open found no application settings
+// table before applying the schema. Existing installations keep their stored
+// choices and retain the historical fallback behavior for unset keys.
+func (d *DB) seedNewDeploymentDefaults() error {
+	tx, err := d.Begin()
+	if err != nil {
+		return fmt.Errorf("begin defaults transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if err := seedNewDeploymentRuntimeDefaults(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit defaults transaction: %w", err)
+	}
+	return nil
+}
+
+func seedNewDeploymentRuntimeDefaults(tx *sql.Tx) error {
+	settings := []struct{ key, value string }{
+		{"traffic_capture", "true"},
+		{"agent_traffic_binding", "true"},
+		{"web_search_enabled", "true"},
+		{"constraints_inject_planner", "true"},
+		{"constraints_inject_worker", "true"},
+	}
+	for _, setting := range settings {
+		if _, err := tx.Exec(`
+INSERT INTO settings(key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO NOTHING`, setting.key, setting.value); err != nil {
+			return fmt.Errorf("seed setting %s: %w", setting.key, err)
+		}
+	}
+	if _, err := tx.Exec(`UPDATE agents SET web_search=true WHERE key IN ('planner','worker','mainagent','auto','pentest')`); err != nil {
+		return fmt.Errorf("enable web search for built-in runtime agents: %w", err)
+	}
+	return nil
 }
 
 // builtinAgent describes one of the fixed agents and its prompt-variable catalog.

@@ -97,7 +97,7 @@ export default function LoginPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
-            alt="ARTEX"
+            alt="ARTEX-Pro"
             width={160}
             height={160}
             className="relative brightness-0 invert dark:opacity-20"
@@ -110,7 +110,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
             <h2 className="text-2xl font-medium tracking-tight">登录</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用 ARTEX</p>
+            <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用 ARTEX-Pro</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
@@ -162,7 +162,7 @@ export default function LoginPage() {
               <ShieldCheck className="size-5" />
             </div>
             <div className="space-y-0.5">
-              <DialogTitle className="text-base">ARTEX-local 使用须知</DialogTitle>
+              <DialogTitle className="text-base">ARTEX-Pro 使用须知</DialogTitle>
               <p className="text-xs text-muted-foreground">
                 版本 v1.1 · 更新日期 2026-11-12 · 请在登录前完整阅读以下内容
               </p>
@@ -175,7 +175,7 @@ export default function LoginPage() {
             className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-muted-foreground"
           >
             <p className="rounded-lg border bg-muted/40 p-3 text-foreground/80">
-              本须知说明 ARTEX-local 的项目来源、授权测试边界和部署注意事项，不替代仓库内适用于具体文件的许可证，也不授予您访问或测试任何目标的权限。请在部署和使用前阅读相关项目文档。
+              本须知说明 ARTEX-Pro（仓库名 ARTEX-local）的项目来源、授权测试边界和部署注意事项，不替代仓库内适用于具体文件的许可证，也不授予您访问或测试任何目标的权限。请在部署和使用前阅读相关项目文档。
               <span className="font-medium text-foreground">
                 {" "}登录确认仅表示您已阅读本须知；每次测试仍须取得目标所有者的明确授权，并遵守约定范围。
               </span>
@@ -189,7 +189,7 @@ export default function LoginPage() {
                 第一条 · 项目来源与许可证
               </h4>
               <p className="pl-7">
-                本仓库是 ARTEX 的独立修改版本，由当前仓库独立维护，不代表原项目官方发布或背书。仓库根目录的 LICENSE、web/LICENSE 及各文件附带的许可声明可能不同；请依据对应文件和 NOTICE.md 核实适用条款。本须知不改变这些许可证。
+                ARTEX-Pro 是基于 ARTEX 源码的独立修改版本，由当前仓库独立维护，不代表原项目官方发布或背书。仓库根目录的 LICENSE、web/LICENSE 及各文件附带的许可声明可能不同；请依据对应文件和 NOTICE.md 核实适用条款。本须知不改变这些许可证。
               </p>
             </section>
 

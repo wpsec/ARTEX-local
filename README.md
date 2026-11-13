@@ -3,12 +3,12 @@
 
 <div align="center">
 
-# ARTEX
+# ARTEX-Pro
 
 AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 
-**本仓库是 ARTEX 的独立修改版本，基于原始 ARTEX 项目源码继续开发，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。项目来源和许可说明见 [NOTICE.md](NOTICE.md)。**
+**ARTEX-Pro 是基于原始 ARTEX 项目源码继续开发的独立修改版本，由当前仓库独立维护版本与发布；原始项目由 Autumn-27 创建。项目来源和许可说明见 [NOTICE.md](NOTICE.md)。**
 
 **原始项目已停止维护。当前仓库独立维护源码、Docker Compose、容器镜像与 Release；测试当前源码请按下方步骤本地构建。**
 
@@ -52,14 +52,14 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 ## 审批记录详情
 
 全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
-[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
+[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX-Pro 的组件和主题：
 
 
 ## 首次部署：Docker
 
-默认 Compose 部署只启动 ARTEX 和 PostgreSQL。OWASP ZAP 作为 ARTEX 容器内的进程运行，并通过内置 MCP 提供 Web 测试工具。
+默认 Compose 部署只启动 ARTEX-Pro 和 PostgreSQL。OWASP ZAP 作为 ARTEX-Pro 容器内的进程运行，并通过内置 MCP 提供 Web 测试工具。
 
-项目版本记录在根目录的 `VERSION`，当前版本为 `0.3.17`，从原生 ARTEX `0.3.15` 接续。运行中的版本会显示在页面右上角；以 `v0.3.17` 等语义版本 tag 发布时，GHCR 镜像会带有 `0.3.17`、`v0.3.17` 和 `latest` 标签。部署时可在 `.env` 中把 `ARTEX_TAG` 设为固定版本，避免跟随 `latest` 更新。
+项目版本记录在根目录的 `VERSION`，当前版本为 `0.3.17`，从原生 ARTEX `0.3.15` 接续。页面右上角显示完整镜像标识 `artex-pro:0.3.17`。发布 `v0.3.17` 等语义版本 tag 时，GHCR 镜像 `ghcr.io/wpsec/artex-pro` 会带有 `0.3.17`、`v0.3.17` 和 `latest` 标签。部署时可在 `.env` 中把 `ARTEX_TAG` 设为固定版本，避免跟随 `latest` 更新。
 
 需要 Docker Engine 和 Docker Compose。
 
@@ -69,9 +69,11 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 ./install.sh
 ```
 
-选择 Docker 安装。脚本会在本机 `.env` 中为 ARTEX PostgreSQL 生成随机凭据，并设为仅当前用户可读写，然后拉取镜像并启动。`.env` 不要提交到仓库。LLM API Key 可以先留空，登录后再在系统设置中配置。
+选择 Docker 安装。脚本会在本机 `.env` 中为 PostgreSQL 生成随机凭据，并设为仅当前用户可读写，然后拉取镜像并启动。`.env` 不要提交到仓库。LLM API Key 可以先留空，登录后再在系统设置中配置。
 
-首次启动完成后打开 **http://localhost:8787**，进入 `/setup` 设置 ARTEX 管理员密码。
+首次启动完成后打开 **http://localhost:8787**，进入 `/setup` 设置管理员密码。
+
+新建数据库首次启动时，流量捕获、Agent 自动绑定已核实流量、网络搜索和 planner/worker 操作约束注入默认开启；内置命令拦截规则也默认生效。默认搜索使用 DDGS，无需 API Key。已有数据库的设置不会因升级被覆盖，可在系统配置中调整。
 
 在「系统配置 → MCP」中可以查看 ZAP 工具。新部署会自动创建并授权内置 ZAP MCP；若不需要 Web 扫描，可在 `.env` 中设置 `ARTEX_ZAP_ENABLED=false`。
 
@@ -94,7 +96,7 @@ ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.
 ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
 
-构建得到的镜像名为 `artex:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角版本来自嵌入二进制的构建版本。
+构建得到的镜像名为 `artex-pro:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角会显示 `artex-pro:<VERSION>`；服务健康接口仍返回纯语义版本，供更新检查使用。
 
 PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。升级时，旧 Compose 项目中当前配置未定义的遗留服务容器不会自动清理；确认不再需要后，可在启动命令中加入 `--remove-orphans` 移除这些容器，数据卷和镜像会保留。
 
@@ -132,7 +134,7 @@ ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --ta
 ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml build artex
 ```
 
-需要切换到新镜像时，再运行 `ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d`。若只想构建供检查，不要运行这一步；它会重建并启动 Compose 中的 ARTEX 服务。
+需要切换到新镜像时，再运行 `ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d`。若只想构建供检查，不要运行这一步；它会重建并启动 Compose 中的 ARTEX-Pro 服务。
 
 ## 配置
 
@@ -192,20 +194,20 @@ server {
 
 ### MCP 预设试用
 
-默认 Compose 只启动 ARTEX 和 PostgreSQL。ZAP 作为 ARTEX 容器内的进程运行，首次初始化后会在 MCP 页面显示，并向内置 Agent 提供工具。通用 MCP 管理仍可连接用户自行部署的外部服务。
+默认 Compose 只启动 ARTEX-Pro 和 PostgreSQL。ZAP 作为 ARTEX-Pro 容器内的进程运行，首次初始化后会在 MCP 页面显示，并向内置 Agent 提供工具。通用 MCP 管理仍可连接用户自行部署的外部服务。
 
-- **OWASP ZAP**：ZAP `2.17.0` 和 MCP Integration add-on `0.4.0` 随 ARTEX 镜像提供，并默认启动。需要节省本机资源时，可在 `.env` 中设 `ARTEX_ZAP_ENABLED=false`。
-- **Web/API 命令行工具**：镜像预装 ffuf `2.3.0` 和 sqlmap `1.10.11.9#dev`，Agent 在授权 Web/API 任务中通过 Bash 按需调用，不会作为常驻服务运行。ffuf 默认提供 `/opt/artex/wordlists/web-common.txt` 小型路径字典。sqlmap 随镜像保留完整源码、上游 `tamper/` 脚本与许可证；ARTEX 不默认启用绕过脚本，也不自动选择脚本。许可说明见 [第三方软件声明](THIRD_PARTY_NOTICES.md)。
-- **资源参考**：镜像较记录的工具拓展前基线增加约 `34.8 MiB`。断网临时容器中的单次峰值为 ffuf `27.8 MiB`、SQLMap `56.1 MiB`、Puppeteer Core + Chromium `215.2 MiB`，均包含各自运行时和测试 fixture，不是 ARTEX 常驻进程开销，也不能相加。最新一次无任务采样中 ARTEX 为 `515.8 MiB`、PostgreSQL 为 `773.2 MiB`；这是单点值，不代表持续空闲基线或峰值。
-- **候选工具评估**：Nuclei 和 Schemathesis 仅在隔离靶场中用于能力对照，未打包进 ARTEX 镜像，也不会由 ARTEX 自动启动。
-- **范围限制**：启用任务允许白名单时，ARTEX 会拦截资产绑定意图中的范围外资产；单用户本地部署不会在网络层限制 Bash/CLI 任意 URL。启动扫描前仍须核实授权目标和排除范围。
+- **OWASP ZAP**：ZAP `2.17.0` 和 MCP Integration add-on `0.4.0` 随 ARTEX-Pro 镜像提供，并默认启动。需要节省本机资源时，可在 `.env` 中设 `ARTEX_ZAP_ENABLED=false`。
+- **Web/API 命令行工具**：镜像预装 ffuf `2.3.0` 和 sqlmap `1.10.11.9#dev`，Agent 在授权 Web/API 任务中通过 Bash 按需调用，不会作为常驻服务运行。ffuf 默认提供 `/opt/artex/wordlists/web-common.txt` 小型路径字典。sqlmap 随镜像保留完整源码、上游 `tamper/` 脚本与许可证；ARTEX-Pro 不默认启用绕过脚本，也不自动选择脚本。许可说明见 [第三方软件声明](THIRD_PARTY_NOTICES.md)。
+- **资源参考**：镜像较记录的工具拓展前基线增加约 `34.8 MiB`。断网临时容器中的单次峰值为 ffuf `27.8 MiB`、SQLMap `56.1 MiB`、Puppeteer Core + Chromium `215.2 MiB`，均包含各自运行时和测试 fixture，不是 ARTEX-Pro 常驻进程开销，也不能相加。最新一次无任务采样中 ARTEX-Pro 为 `515.8 MiB`、PostgreSQL 为 `773.2 MiB`；这是单点值，不代表持续空闲基线或峰值。
+- **候选工具评估**：Nuclei 和 Schemathesis 仅在隔离靶场中用于能力对照，未打包进 ARTEX-Pro 镜像，也不会由 ARTEX-Pro 自动启动。
+- **范围限制**：启用任务允许白名单时，ARTEX-Pro 会拦截资产绑定意图中的范围外资产；单用户本地部署不会在网络层限制 Bash/CLI 任意 URL。启动扫描前仍须核实授权目标和排除范围。
 - ZAP 的传统 Spider、被动扫描和主动扫描默认可用。AJAX Spider / Client Spider 的 Firefox 浏览器支持需要额外浏览器与驱动，当前默认镜像未包含；可用内置 Playwright MCP 探索现代 SPA。详见 [ZAP Selenium 文档](https://www.zaproxy.org/docs/desktop/addons/selenium/)。
 
 ### 内置 Skill
 
-ARTEX 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可通过通用 MCP 配置接入外部目录分析服务；未接入时会继续执行其他可用检查。
+ARTEX-Pro 默认包含 Web、API、代码审查和内网测试工作流 Skill，无需单独安装。任务路由会区分 API 盘点与安全测试；Web/API 安全测试会调用 ZAP。内网/AD 流程可通过通用 MCP 配置接入外部目录分析服务；未接入时会继续执行其他可用检查。
 
-启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。
+启用 Browser MCP 后可用于交互式页面操作；`playwright-cli` 随 ARTEX-Pro 镜像提供，用于可复现脚本和测试产物，同一操作不要重复启动两种浏览器入口。
 
 LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。
 
@@ -221,7 +223,7 @@ LLM 密钥仍需由使用者在系统设置中配置。不要提交 `.env`。
 
 ### 本地运行与测试
 
-`./dev.sh` 使用 `8787` 和 `8788` 端口；若本地 Docker Compose 的 ARTEX 容器正在运行，先停止该服务，避免端口冲突。开发结束后再启动容器：
+`./dev.sh` 使用 `8787` 和 `8788` 端口；若本地 Docker Compose 的 ARTEX-Pro 容器正在运行，先停止该服务，避免端口冲突。开发结束后再启动容器：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.local.yml stop artex
@@ -244,7 +246,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d artex
   ARTEX_PG_DSN='<隔离测试库 DSN>' go test ./server -run 'Test(MgmtAPI|ResolveMCPEnvWithLookup|ResolveMCPEnvWithLookupMissingSecret|ResolveMCPEnvWithLookupRejectsMalformedReference|ResolveMCPEnvKeepsReferenceOutOfStoredConfig|ConnectMCPHTTPResolvesSecretAsHeader)$' -count=1
   ```
 
-  这些测试会读写 MCP 配置和测试表，不要连接正在使用的 ARTEX 数据库。未配置 DSN 时，依赖 PostgreSQL 的测试可能跳过。
+  这些测试会读写 MCP 配置和测试表，不要连接正在使用的 ARTEX-Pro 数据库。未配置 DSN 时，依赖 PostgreSQL 的测试可能跳过。
 - 临时 PostgreSQL 测试库示例（仅监听本机；停止容器后测试数据随容器移除）：
 
   ```bash
@@ -281,7 +283,7 @@ unset ARTEX_PG_DSN ARTEX_TEST_PG_PASSWORD
 
 ## 系统技术架构
 
-ARTEX 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
+ARTEX-Pro 是一套 **LLM 多 agent 驱动的自主渗透系统**：Go 单体后端（内嵌 Next.js 前端）+ PostgreSQL，agent 能力由 [`norma`](https://github.com/Autumn-27/norma) SDK 提供（`agentcore` / `tool` / `permission` / `harness` / `memory` / `transcript`）。核心是**双图架构**，以及围绕它的两条自主性机制：**worker 间过程级信息交换**与 **planner 多轮共享 todolist 稳定攻击链路**。
 
 ### 总体分层
 
@@ -445,20 +447,20 @@ flowchart TB
   R3["第 3 轮（②产出 fact）　派意图③"] --> T3
 ```
 
-于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 ARTEX 能自主走完多步利用链的关键。
+于是攻击链在“事件驱动 + 无状态会话”的环境下依然**稳定推进、不重复、不错序**——这是 ARTEX-Pro 能自主走完多步利用链的关键。
 
 
 ## 许可与免责声明
 
 ### 开源协议
 
-本项目是 ARTEX 的修改版本。根目录 [LICENSE](LICENSE) 收录 GNU Affero General Public License v3.0（AGPL-3.0）完整条款；项目来源、修改日期和许可说明见 [NOTICE.md](NOTICE.md)。仓库还保留了 [web/LICENSE](web/LICENSE) 中的 MIT 许可文本及版权声明，本说明不改写其适用范围。
+ARTEX-Pro 是 ARTEX 的修改版本。根目录 [LICENSE](LICENSE) 收录 GNU Affero General Public License v3.0（AGPL-3.0）完整条款；项目来源、修改日期和许可说明见 [NOTICE.md](NOTICE.md)。仓库还保留了 [web/LICENSE](web/LICENSE) 中的 MIT 许可文本及版权声明，本说明不改写其适用范围。
 
 复制、修改、分发或通过网络提供服务时，应遵守对应材料适用的许可证完整条款。根目录 AGPL-3.0 与 `web/LICENSE` 中的 MIT 许可文本并存；具体文件适用范围应结合相应的版权与许可声明确认。
 
 > **重要提示**：开源协议本身不限制软件的使用用途。以下的「使用限制」与「免责声明」是作者对使用者的额外约定与郑重声明，请务必遵守。
 
-**ARTEX 面向渗透测试、红队演练、代码研究和技术验证，支持对客户或自有资产开展授权测试。**
+**ARTEX-Pro 面向渗透测试、红队演练、代码研究和技术验证，支持对客户或自有资产开展授权测试。**
 
 ### 允许使用范围
 

@@ -236,9 +236,9 @@ type Manager struct {
 	mu          sync.RWMutex
 	tasks       map[string]*Task
 	active      string
-	trafficOn   bool // 流量捕获开关（默认关；settings.traffic_capture）
+	trafficOn   bool // 流量捕获开关（新数据库默认开；旧库未配置时默认关）
 	llmRecOn    bool // LLM 录制开关（默认关；settings.llm_record）
-	// 联网搜索开关与来源（默认关；settings.web_search_*）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
+	// 联网搜索开关与来源（新数据库默认开；旧库未配置时默认关）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
 	// webSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关。
 	webSearchOn      bool
 	webSearchBackend string
@@ -417,7 +417,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	m.trafficOn = pg.GetBool(settingTrafficCapture, false)
 	// LLM 录制开关（默认关）。录制器每次调用时读取此标志。
 	m.llmRecOn = pg.GetBool(settingLLMRecord, false)
-	// Load persisted web-search config (default: off, ddgs).
+	// New databases seed web search on with DDGS; existing databases preserve the
+	// stored switch and retain the historical off fallback when the key is absent.
 	m.webSearchOn = pg.GetBool(settingWebSearchOn, false)
 	if v, ok, _ := pg.GetSetting(settingWebSearchBackend); ok && v != "" {
 		m.webSearchBackend = v
@@ -451,8 +452,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	return m, nil
 }
 
-// TrafficEnabled reports whether traffic capture is on (default off). When off,
-// no proxy/traffic tools/prompt are injected into agents (nothing is recorded).
+// TrafficEnabled reports whether traffic capture is on. When off, no proxy/traffic
+// tools/prompt are injected into agents (nothing is recorded).
 func (m *Manager) TrafficEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

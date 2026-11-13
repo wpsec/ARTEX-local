@@ -416,7 +416,7 @@ export default function SystemSettingsPage() {
               <b>noa 上下文压缩</b>：作者在 norma v0.4.0 引入的模型驱动压缩机制（当前依赖 v0.4.3）。开启后平台接入的四类
               Agent（
               <b>规划者 / 执行者 / 主 Agent / 对话</b>）改用 noa 接管上下文，取代内置压缩，原始对话按 Agent Session ID
-              持久归档到 ARTEX 数据目录的 noa 子目录，便于回溯。切换即时生效（对之后启动的运行生效），无需重建 Agent；
+              持久归档到 ARTEX-Pro 数据目录的 noa 子目录，便于回溯。切换即时生效（对之后启动的运行生效），无需重建 Agent；
               关闭后立即恢复内置压缩。
             </CardDescription>
           </CardHeader>

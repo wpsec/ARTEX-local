@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
 
   artex:
-    image: ghcr.io/wpsec/artex-local:${ARTEX_TAG:-latest}
+    image: ghcr.io/wpsec/artex-pro:${ARTEX_TAG:-latest}
     depends_on:
       postgres:
         condition: service_healthy

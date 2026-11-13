@@ -77,6 +77,62 @@ func TestBuiltinSkillVisibilityDefaults(t *testing.T) {
 	}
 }
 
+func TestSeedNewDeploymentRuntimeDefaults(t *testing.T) {
+	sqlDB, err := sql.Open("pgx", testDSN(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	if err := sqlDB.PingContext(t.Context()); err != nil {
+		t.Skipf("postgres unavailable (%v) — skipping", err)
+	}
+
+	tx, err := sqlDB.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		`CREATE TEMP TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`CREATE TEMP TABLE agents (key TEXT PRIMARY KEY, web_search BOOLEAN NOT NULL DEFAULT false)`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, key := range []string{"planner", "worker", "mainagent", "auto", "pentest", "goals"} {
+		if _, err := tx.Exec(`INSERT INTO agents(key) VALUES ($1)`, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := seedNewDeploymentRuntimeDefaults(tx); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"traffic_capture",
+		"agent_traffic_binding",
+		"web_search_enabled",
+		"constraints_inject_planner",
+		"constraints_inject_worker",
+	} {
+		var value string
+		if err := tx.QueryRow(`SELECT value FROM settings WHERE key=$1`, key).Scan(&value); err != nil {
+			t.Fatalf("read %s: %v", key, err)
+		}
+		if value != "true" {
+			t.Errorf("%s=%q, want true", key, value)
+		}
+	}
+	var enabledAgents int
+	if err := tx.QueryRow(`SELECT count(*) FROM agents WHERE web_search`).Scan(&enabledAgents); err != nil {
+		t.Fatal(err)
+	}
+	if enabledAgents != 5 {
+		t.Fatalf("web search enabled for %d agents, want 5 runtime agents", enabledAgents)
+	}
+}
+
 // testDSN returns the configured DSN, skipping the test when neither the env var
 // nor a config file supplies one (DSN no longer has a built-in default).
 func testDSN(t *testing.T) string {
