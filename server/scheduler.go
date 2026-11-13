@@ -20,9 +20,11 @@ import (
 // + finding watermark + fired-goal set) so a restart resumes without double-firing.
 // Triggers only attach to CUSTOM agents.
 type Scheduler struct {
-	s    *Server
-	pg   *db.DB
-	tick time.Duration
+	s                     *Server
+	pg                    *db.DB
+	tick                  time.Duration
+	reportRecoveryBefore  time.Time
+	reportRecoveryChecked bool
 }
 
 const (
@@ -34,7 +36,7 @@ const (
 )
 
 func newScheduler(s *Server) *Scheduler {
-	return &Scheduler{s: s, pg: s.m.pg, tick: 5 * time.Second}
+	return &Scheduler{s: s, pg: s.m.pg, tick: 5 * time.Second, reportRecoveryBefore: time.Now()}
 }
 
 // Run loops until ctx is done, ticking the scheduler. Started once from server New.
@@ -128,6 +130,42 @@ func (sc *Scheduler) step() {
 	sc.fireTaskTimeouts(triggers)
 	sc.fireToolCalls(triggers)
 	sc.fireTaskCreates(triggers)
+	sc.recoverIncompleteFindingReports(triggers)
+}
+
+// recoverIncompleteFindingReports replays only findings that predate this
+// process. New findings continue through the normal tool-call trigger, avoiding
+// duplicate reporter runs while recovering fires lost during a prior restart.
+func (sc *Scheduler) recoverIncompleteFindingReports(triggers []*db.AgentTrigger) {
+	if sc.reportRecoveryChecked || sc.s.chatAgentRef() == nil {
+		return
+	}
+	var reporterTrigger *db.AgentTrigger
+	for _, trigger := range triggers {
+		if strings.EqualFold(trigger.AgentKey, "reporter") && trigger.OnToolCall && containsFold(trigger.ToolNames, "report_finding") {
+			reporterTrigger = trigger
+			break
+		}
+	}
+	if reporterTrigger == nil {
+		return
+	}
+	incomplete, err := sc.pg.FindingsMissingReportsBefore(sc.reportRecoveryBefore)
+	if err != nil {
+		log.Printf("[reporter] 查询重启前未完成的漏洞报告失败: %v", err)
+		return
+	}
+	sc.reportRecoveryChecked = true
+	for _, finding := range incomplete {
+		result := fmt.Sprintf("finding recorded: %d\n{\"finding_id\":\"%d\",\"finding_node_id\":\"%d\"}",
+			finding.NodeID, finding.FindingID, finding.NodeID)
+		message := reporterTrigger.ToolCallMessage +
+			"\n\n【服务重启后的报告恢复】以下漏洞记录已保存在数据库，但详细报告和交付报告均未保存。请勿再次调用 report_finding；重新读取该任务的漏洞证据、执行过程和流量版本，再按报告流程一次保存两份报告。" +
+			"\n\n【恢复记录】\n工具: report_finding\n工具输出（根据已保存记录恢复）: " + result
+		sc.s.StartTriggeredRun(reporterTrigger.AgentKey,
+			fmt.Sprintf("报告恢复 · task#%d · finding#%d", finding.TaskID, finding.FindingID),
+			message, finding.TaskID, true, finding.TaskDescription, finding.TaskGoal)
+	}
 }
 
 // fireIntervals fires triggers whose interval has elapsed since last_fire.

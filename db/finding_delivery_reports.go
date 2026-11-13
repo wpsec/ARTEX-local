@@ -18,6 +18,52 @@ type FindingDeliveryReport struct {
 	UpdatedAt              *time.Time `json:"updated_at,omitempty"`
 }
 
+type IncompleteFindingReport struct {
+	TaskID          int64
+	FindingID       int64
+	NodeID          int64
+	TaskDescription string
+	TaskGoal        string
+}
+
+// FindingsMissingReportsBefore returns task findings whose detailed and delivery
+// reports are both absent and whose reporter conversation existed before the
+// recovery boundary. This avoids treating older findings that were never sent to
+// the reporter as interrupted work or overwriting a partially present report.
+func (d *DB) FindingsMissingReportsBefore(before time.Time) ([]IncompleteFindingReport, error) {
+	rows, err := d.Query(`
+SELECT f.task_id, f.id, f.node_id, t.description, t.goal
+FROM findings f
+JOIN tasks t ON t.id=f.task_id AND t.deleted_at IS NULL
+LEFT JOIN finding_delivery_reports r ON r.task_id=f.task_id AND r.finding_id=f.id
+WHERE f.node_id IS NOT NULL AND f.created_at < $1
+  AND NULLIF(btrim(COALESCE(f.report,'')), '') IS NULL
+  AND NULLIF(btrim(COALESCE(r.content,'')), '') IS NULL
+  AND EXISTS (
+      SELECT 1
+      FROM conversations c
+      JOIN conversation_activities ca ON ca.conversation_id=c.id
+      WHERE c.agent_key='reporter' AND c.created_at < $1 AND ca.kind='user'
+        AND position(('finding recorded: ' || f.node_id::text || E'\n') in COALESCE(ca.detail,'')) > 0
+  )
+ORDER BY f.created_at, f.id`, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]IncompleteFindingReport, 0)
+	for rows.Next() {
+		var finding IncompleteFindingReport
+		if err := rows.Scan(&finding.TaskID, &finding.FindingID, &finding.NodeID,
+			&finding.TaskDescription, &finding.TaskGoal); err != nil {
+			return nil, err
+		}
+		out = append(out, finding)
+	}
+	return out, rows.Err()
+}
+
 func (d *DB) GetFindingDeliveryReport(taskID, findingID int64) (*FindingDeliveryReport, error) {
 	out := &FindingDeliveryReport{TaskID: taskID, FindingID: findingID}
 	var updatedAt sql.NullTime
