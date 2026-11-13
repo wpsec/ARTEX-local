@@ -24,7 +24,7 @@ import (
 
 // version is the build version, injected at release time via
 // -ldflags "-X main.version=<tag>". Defaults to the current project version for manual builds.
-var version = "0.3.16"
+var version = "0.3.17"
 
 const banner = `
     _    ____ _____ _______  __
