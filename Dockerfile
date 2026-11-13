@@ -46,7 +46,7 @@ RUN set -eux; \
     printf '%s\n' '#!/bin/sh' 'exec python3 /opt/sqlmap/sqlmap.py "$@"' > /out/usr/local/bin/sqlmap; \
     chmod 0755 /out/usr/local/bin/sqlmap
 
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 ARG TARGETARCH
 # 常用工具：ripgrep / curl / vim，加一批 recon 常备件（按需增删）。
 # Node 从 NodeSource 装 20.x：bookworm 自带的 apt nodejs 是 18，Playwright 要求 >=20。
