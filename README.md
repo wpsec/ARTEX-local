@@ -1,6 +1,5 @@
-> **`main` 分支说明**
-> 本分支保留原始 ARTEX 源码基线。本次仅补充衍生版本入口说明，后续衍生开发不再修改 `main`。
-> 衍生版本地址：[wpsec/ARTEX-local](https://github.com/wpsec/ARTEX-local)，活跃整合分支为 [`artex-iteration`](https://github.com/wpsec/ARTEX-local/tree/artex-iteration)，日常开发分支为 `artex-iteration-dev`。
+<h2 align="center"><a href="https://github.com/wpsec/ARTEX-local/tree/artex-pro">ARTEX-Pro 正式分支</a></h2>
+<p align="center"><code>main</code> 保留原始 ARTEX 源码基线 · 日常开发分支：<code>artex-iteration-dev</code></p>
 
 <div align="center">
 
