@@ -185,7 +185,7 @@ func (i *Interceptor) bindResult(ctx context.Context, id int64, audit *db.Interc
 		return
 	}
 	t.bind(audit.ToolUseID, func(status, output string, cut bool) {
-		_ = i.db.CompleteIntercept(id, audit.RunID, audit.ToolUseID, status, output, cut)
+		i.completePending(id, audit, status, output, cut)
 	})
 }
 

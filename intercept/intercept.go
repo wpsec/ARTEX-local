@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -561,15 +562,34 @@ func defaultMessage(action, name string) string {
 // Log records an allow/deny rule or model decision into intercept_pending as an ALREADY-decided
 // row (status = "allowed" | "denied"), for observability. Unlike HandleAsk it does NOT
 // block and needs no user action — it makes explicit review decisions visible on the history
-// page (GET /api/intercept/history) and the task's intercept list. Best-effort: a DB
-// error is swallowed so logging never changes the tool call's outcome. The pending list
-// (status='pending') is unaffected, so it still shows only asks awaiting a decision.
+// page (GET /api/intercept/history) and the task's intercept list. Persistence errors
+// are logged but never change the tool call's outcome. The pending list is unaffected.
 func (i *Interceptor) Log(ctx context.Context, convID int64, dec Decision, toolName string, input []byte, status string) {
 	taskID, agentName := taskInfoFromCtx(ctx)
 	audit := auditFor(ctx, dec, input, status)
 	id, err := i.db.CreateDecidedIntercept(dec.RuleID, convID, taskID, agentName, toolName, input, status, dec.Message, audit)
-	if err == nil {
-		i.bindResult(ctx, id, audit)
+	if err != nil {
+		log.Printf("[intercept] 决策审计写入失败 (tool=%q, status=%q): %v", toolName, status, err)
+		return
+	}
+	i.bindResult(ctx, id, audit)
+}
+
+func (i *Interceptor) resolvePending(id int64, status, action, reason string) (bool, error) {
+	resolved, err := i.db.ResolveIntercept(id, status, action, reason)
+	if err != nil {
+		log.Printf("[intercept] 审批状态写入失败 (pending_id=%d, action=%q): %v", id, action, err)
+	}
+	return resolved, err
+}
+
+func (i *Interceptor) completePending(id int64, audit *db.InterceptAudit, status, output string, truncated bool) {
+	var runID, toolUseID string
+	if audit != nil {
+		runID, toolUseID = audit.RunID, audit.ToolUseID
+	}
+	if err := i.db.CompleteIntercept(id, runID, toolUseID, status, output, truncated); err != nil {
+		log.Printf("[intercept] 执行结果写入失败 (pending_id=%d, tool_use_id=%q): %v", id, toolUseID, err)
 	}
 }
 
@@ -589,6 +609,7 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 	audit := auditFor(ctx, dec, input, "pending")
 	pendingID, err := i.db.CreateInterceptPending(ruleID, convID, taskID, agentName, toolName, input, dec.Message, audit)
 	if err != nil {
+		log.Printf("[intercept] 审批记录写入失败 (tool=%q): %v", toolName, err)
 		return false
 	}
 
@@ -628,8 +649,8 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		case allowed := <-ch:
 			return allowed
 		case <-ctx.Done():
-			_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
-			_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
+			i.resolvePending(pendingID, "denied", "deny", "工作已取消")
+			i.completePending(pendingID, audit, "not_executed", "执行前工作已取消", false)
 			return false
 		}
 	}
@@ -649,18 +670,21 @@ func (i *Interceptor) HandleAsk(ctx context.Context, convID int64, dec Decision,
 		if allowed {
 			action = "allow"
 		}
-		resolved, err := i.db.ResolveIntercept(pendingID, "timeout", action, "审批超时，按超时策略处理")
+		resolved, err := i.resolvePending(pendingID, "timeout", action, "审批超时，按超时策略处理")
 		if err != nil {
 			return false
 		}
 		if !resolved {
 			detail, err := i.db.GetInterceptDetail(pendingID)
+			if err != nil {
+				log.Printf("[intercept] 读取审批终态失败 (pending_id=%d): %v", pendingID, err)
+			}
 			return err == nil && detail != nil && (detail.Status == "allowed" || (detail.Audit != nil && detail.Audit.EffectiveAction == "allow"))
 		}
 		return allowed
 	case <-ctx.Done():
-		_, _ = i.db.ResolveIntercept(pendingID, "denied", "deny", "工作已取消")
-		_ = i.db.CompleteIntercept(pendingID, audit.RunID, audit.ToolUseID, "not_executed", "执行前工作已取消", false)
+		i.resolvePending(pendingID, "denied", "deny", "工作已取消")
+		i.completePending(pendingID, audit, "not_executed", "执行前工作已取消", false)
 		return false
 	}
 }
@@ -677,7 +701,7 @@ func (i *Interceptor) Decide(pendingID int64, allowed bool) error {
 	if allowed {
 		action, reason = "allow", "人工允许执行"
 	}
-	resolved, err := i.db.ResolveIntercept(pendingID, status, action, reason)
+	resolved, err := i.resolvePending(pendingID, status, action, reason)
 	if err != nil {
 		return err
 	}
