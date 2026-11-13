@@ -12,7 +12,7 @@
 
 ## Git 与工作区
 
-- 分支模型：`main` 是独立安全维护备份，只接收漏洞修复；`artex-iteration` 是活跃整合分支；日常开发在 `artex-iteration-dev`，完成并通过检查后合入 `artex-iteration`。不得把整合分支或开发分支合入 `main`。若安全修复需要进入整合版，单独 cherry-pick 到开发线后再合入 `artex-iteration`。
+- 分支模型：`main` 是 ARTEX-Pro 正式主分支；`artex-dev` 是日常开发分支，完成并通过检查后通过 Pull Request 合入 `main`；`artex-native-backup` 保留原生 ARTEX 源码基线，不承接衍生版开发。长期维护分支仅保留这三条。
 - 开始工作前检查当前分支和工作区，保留已有未提交修改，不覆盖或丢弃他人的工作。
 - 未经用户明确要求，不执行 `git push` 或其他远程同步操作。
 - 只有用户明确要求提交时才执行 `git commit`。提交信息遵循 `<type>(<scope>): <简体中文主题>`；类型使用 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore` 或 `revert`，范围使用 `core`、`api`、`ui`、`docker`、`k8s`、`security`、`scripts` 或 `config`。
