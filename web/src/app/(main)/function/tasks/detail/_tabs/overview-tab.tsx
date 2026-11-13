@@ -103,6 +103,56 @@ function StatCard({
   );
 }
 
+function ExpandableTaskText({ text }: { text: string }) {
+  const contentRef = React.useRef<HTMLParagraphElement>(null);
+  const contentId = React.useId();
+  const [expanded, setExpanded] = React.useState(false);
+  const [canExpand, setCanExpand] = React.useState(false);
+
+  React.useEffect(() => {
+    if (expanded) return;
+    const content = contentRef.current;
+    if (!content) return;
+
+    const updateOverflow = () => {
+      if (!text.trim()) {
+        setCanExpand(false);
+        return;
+      }
+      setCanExpand(content.scrollHeight > content.clientHeight + 1);
+    };
+    updateOverflow();
+    const observer = new ResizeObserver(updateOverflow);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [expanded, text]);
+
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <p
+        ref={contentRef}
+        id={contentId}
+        className={`text-sm leading-6 whitespace-pre-wrap break-words ${expanded ? "" : "max-h-24 overflow-hidden"}`}
+      >
+        {text}
+      </p>
+      {(canExpand || expanded) && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          aria-controls={contentId}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "收起" : "展开全文"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function OverviewTab({ taskId }: { taskId: string }) {
   const [task, setTask] = React.useState<Task | null>(null);
   const [stats, setStats] = React.useState<Stats | null>(null);
@@ -442,11 +492,11 @@ export function OverviewTab({ taskId }: { taskId: string }) {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <div className="text-xs font-medium text-muted-foreground">描述</div>
-            <p className="text-sm whitespace-pre-wrap break-words">{task?.description?.trim() || "—"}</p>
+            <ExpandableTaskText text={task?.description?.trim() || "—"} />
           </div>
           <div className="flex flex-col gap-1.5">
             <div className="text-xs font-medium text-muted-foreground">目标</div>
-            <p className="text-sm whitespace-pre-wrap break-words">{task?.goal?.trim() || "—"}</p>
+            <ExpandableTaskText text={task?.goal?.trim() || "—"} />
           </div>
         </CardContent>
       </Card>
