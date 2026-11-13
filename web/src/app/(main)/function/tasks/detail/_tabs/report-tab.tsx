@@ -71,20 +71,22 @@ export function ReportTab({ taskId }: { taskId: string }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <FileTextIcon className="size-4" /> 渗透测试报告（Markdown）
-        </CardTitle>
-        <div className="flex gap-2">
-          {report && (
-            <Button size="sm" variant="outline" onClick={copy}>
-              {copied ? <CheckIcon /> : <CopyIcon />} 复制
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>{content}</CardContent>
-    </Card>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <FileTextIcon className="size-4" /> 渗透测试报告（Markdown）
+          </CardTitle>
+          <div className="flex gap-2">
+            {report && (
+              <Button size="sm" variant="outline" onClick={copy}>
+                {copied ? <CheckIcon /> : <CopyIcon />} 复制
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>{content}</CardContent>
+      </Card>
+    </div>
   );
 }

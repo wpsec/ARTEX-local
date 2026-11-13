@@ -12,26 +12,15 @@ The applicable license text is in [`LICENSE-APACHE-2.0.txt`](LICENSE-APACHE-2.0.
 
 ## Anthropic-Cybersecurity-Skills
 
-The skills below adapt and rewrite selected material from the mukul975/Anthropic-Cybersecurity-Skills repository: https://github.com/mukul975/Anthropic-Cybersecurity-Skills. Original authorship is credited according to each selected upstream skill's metadata. The repository is licensed under Apache License 2.0, is an independent community project, and is not affiliated with Anthropic. Reviewed upstream ref: main, accessed 2026-11-02.
+The skill below adapts and rewrites selected material from the mukul975/Anthropic-Cybersecurity-Skills repository: https://github.com/mukul975/Anthropic-Cybersecurity-Skills. Original authorship is credited according to the upstream skill's metadata. The repository is licensed under Apache License 2.0, is an independent community project, and is not affiliated with Anthropic. Reviewed upstream ref: main, accessed 2026-11-02.
 
-- analyzing-android-malware-with-apktool — upstream v1.0, author mahipal; Android APK static triage.
-- analyzing-linux-elf-malware — upstream v1.0.0, author mahipal; Linux ELF static triage.
-- analyzing-golang-malware-with-ghidra — upstream v1.0, author mahipal; Go binary metadata and Ghidra analysis.
-- analyzing-packed-malware-with-upx-unpacker — upstream v1.0.0, author mahipal; UPX identification and unpacking for further static analysis.
-- deobfuscating-javascript-malware — upstream v1.0.0, author mahipal; local JavaScript deobfuscation.
-- analyzing-uefi-bootkit-persistence — upstream v1.0.0, author mukul975; local UEFI and boot-persistence artifacts.
-- analyzing-network-traffic-of-malware — upstream v1.0.0, author mahipal; PCAP and network traffic analysis.
-- analyzing-malware-behavior-with-cuckoo-sandbox — upstream v1.0.0, author mahipal; sandbox behavior analysis.
 - conducting-internal-network-penetration-test — upstream v1.0, author mahipal; internal network engagement workflow.
-- conducting-cloud-penetration-testing — upstream v1.0.0, author mahipal; cloud assessment workflow.
-- conducting-mobile-app-penetration-test — upstream v1.0.0, author mahipal; mobile application assessment workflow.
-- conducting-social-engineering-penetration-test — upstream v1.0, author mahipal; controlled social engineering simulation planning.
 
 These skills were rewritten in Simplified Chinese for ARTEX's evidence and engagement workflows. Upstream executable scripts and automatic installation or configuration steps were not included. The Apache-2.0 license text and upstream copyright notice are in LICENSE-APACHE-2.0-ANTHROPIC.txt.
 
 ## reverse-skill
 
-`reverse-engineering-router` and `authorized-pentest-router` adapt the sample-type, task-goal, and tool-availability routing approach from the zhaoxuya520/reverse-skill repository: https://github.com/zhaoxuya520/reverse-skill. Reviewed upstream version marker: 1.0.1 (main, accessed 2026-11-02). The routers were rewritten for ARTEX. Upstream scripts, MCP configuration, tool bootstrapping, and CTF orchestration were not included.
+`authorized-pentest-router` adapts the task-goal and tool-availability routing approach from the zhaoxuya520/reverse-skill repository: https://github.com/zhaoxuya520/reverse-skill. Reviewed upstream version marker: 1.0.1 (main, accessed 2026-11-02). The router was rewritten for ARTEX. Upstream scripts, MCP configuration, tool bootstrapping, and CTF orchestration were not included.
 
 The applicable MIT license text is in LICENSE-MIT.txt. Its copyright notice is retained for the adapted router.
 

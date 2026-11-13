@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/skill"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/traffic"
 )
 
 // wireAgentAugment connects the PG agent_visibility table into the agent runtime:
@@ -83,6 +83,10 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				skillGated := gated[m.Name]
 				if !directVisible && !skillGated {
 					continue // neither directly visible nor referenced by a visible skill
+				}
+				if validateMCPConfig(m) != nil {
+					// Startup discovery reports incomplete configs once; agent runs must not retry them.
+					continue
 				}
 				cl, err := connectMCP(ctx, m)
 				if err != nil {

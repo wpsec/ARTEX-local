@@ -501,7 +501,14 @@ export interface Finding {
   status: FindingStatus;
   summary: string;
   evidence: string;
+  evidence_check_status?: "matched" | "unmatched" | "not_assessed";
+  evidence_check_note?: string;
+  evidence_quotes?: { traffic_id?: string; snapshot_id?: string; side: "request" | "response"; quote: string }[];
+  counterevidence?: string;
   report?: string; // 详细报告(Markdown);仅详情接口返回,列表为空
+  delivery_report?: string;
+  delivery_report_cvss_vector?: string;
+  delivery_report_stale?: boolean;
   intent_id?: string;
   param_id?: string;
   task_id?: string;
@@ -910,7 +917,7 @@ export interface TrafficHost {
 // ---- App settings (runtime toggles) ----
 export interface Settings {
   traffic_capture: boolean;
-  agent_traffic_binding: boolean; // Agent 自动绑定流量证据，默认关闭；不影响人工绑定
+  agent_traffic_binding: boolean; // Agent 自动绑定流量证据；新部署默认开启，不影响人工绑定
   llm_record: boolean; // LLM 录制开关（默认关）；关闭时不记录任何 LLM 调用
   // Web search. brave_key_set / tavily_key_set reflect whether a key is stored
   // (the values are never returned). On PUT, send the corresponding field to set/clear.

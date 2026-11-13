@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 // 发现页「导出」用的渲染:把一批 findings 表行渲染成汇总 Markdown、单条 Markdown、
@@ -79,6 +79,7 @@ func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
 		if e := strings.TrimSpace(f.Evidence); e != "" {
 			fmt.Fprintf(&b, "**证据：**\n\n```\n%s\n```\n\n", e)
 		}
+		b.WriteString(findingEvidenceCheckMarkdown(f))
 		if rep := strings.TrimSpace(f.Report); rep != "" {
 			b.WriteString("**详细报告：**\n\n")
 			b.WriteString(rep)
@@ -110,6 +111,7 @@ func SingleFindingMarkdown(f *db.DBFinding, generatedAt time.Time) string {
 	if e := strings.TrimSpace(f.Evidence); e != "" {
 		fmt.Fprintf(&b, "## 证据\n\n```\n%s\n```\n\n", e)
 	}
+	b.WriteString(findingEvidenceCheckMarkdown(f))
 	if rep := strings.TrimSpace(f.Report); rep != "" {
 		b.WriteString("## 详细报告\n\n")
 		b.WriteString(rep)
@@ -117,6 +119,42 @@ func SingleFindingMarkdown(f *db.DBFinding, generatedAt time.Time) string {
 	}
 	b.WriteString(findingTrafficMarkdown(f, true))
 	return b.String()
+}
+
+func findingEvidenceCheckMarkdown(f *db.DBFinding) string {
+	if len(f.EvidenceQuotes) == 0 && f.Counterevidence == "" &&
+		(f.EvidenceCheckStatus == "" || f.EvidenceCheckStatus == db.EvidenceCheckNotAssessed) {
+		return ""
+	}
+	var out strings.Builder
+	label := map[string]string{
+		db.EvidenceCheckMatched:     "引用原文已匹配",
+		db.EvidenceCheckUnmatched:   "存在未匹配引用",
+		db.EvidenceCheckNotAssessed: "尚未核验",
+	}[f.EvidenceCheckStatus]
+	if label == "" {
+		label = "尚未核验"
+	}
+	out.WriteString("## 证据原文引用\n\n")
+	fmt.Fprintf(&out, "匹配状态：%s。原文匹配仅用于定位证据，不代表漏洞已确认。\n\n", label)
+	if note := strings.TrimSpace(f.EvidenceCheckNote); note != "" {
+		fmt.Fprintf(&out, "%s\n\n", note)
+	}
+	for i, quote := range f.EvidenceQuotes {
+		ref := quote.TrafficID
+		if ref == "" {
+			ref = quote.SnapshotID
+		}
+		fmt.Fprintf(&out, "%d. 流量 `%s` 的%s原文：\n\n", i+1, strings.ReplaceAll(ref, "`", "%60"), map[string]string{"request": "请求", "response": "响应"}[quote.Side])
+		for _, line := range strings.Split(quote.Quote, "\n") {
+			fmt.Fprintf(&out, "> %s\n", line)
+		}
+		out.WriteString("\n")
+	}
+	if counter := strings.TrimSpace(f.Counterevidence); counter != "" {
+		fmt.Fprintf(&out, "### 反证与未成立路径\n\n%s\n\n", counter)
+	}
+	return out.String()
 }
 
 var unsafeFilenameChars = regexp.MustCompile(`[^\p{Han}\p{L}\p{N}._-]+`)

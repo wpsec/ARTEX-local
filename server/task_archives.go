@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	pgdb "github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/wpsec/ARTEX-local/agent"
+	pgdb "github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/traffic"
 )
 
 const taskArchivePollInterval = 2 * time.Second
@@ -57,9 +57,7 @@ func (s *Server) startTaskArchiveWorker() {
 		log.Printf("[task-archive] worker disabled because startup recovery is incomplete")
 		return
 	}
-	s.archiveWG.Add(1)
-	go func() {
-		defer s.archiveWG.Done()
+	s.goBackgroundWith(&s.archiveWG, func() {
 		ticker := time.NewTicker(taskArchivePollInterval)
 		defer ticker.Stop()
 		for {
@@ -73,7 +71,7 @@ func (s *Server) startTaskArchiveWorker() {
 			case <-ticker.C:
 			}
 		}
-	}()
+	})
 	s.notifyTaskArchiveWorker()
 }
 

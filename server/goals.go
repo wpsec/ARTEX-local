@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 type goalSpec struct {
@@ -236,10 +236,12 @@ func (s *Server) startAdmittedTask(t *Task, mode string) {
 		if s.engine.IsPaused(t.ID) {
 			s.engine.Resume(t)
 		}
-		go func() {
+		if !s.goBackground(func() {
 			defer s.engine.decInflight(t.ID)
 			s.startTaskEngine(t)
-		}()
+		}) {
+			s.engine.decInflight(t.ID)
+		}
 		return
 	}
 	s.engine.Run(s.ctx, t)

@@ -1,0 +1,32 @@
+name: 缺陷报告
+description: 报告可复现的产品缺陷
+title: "[缺陷] "
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 说明实际结果与预期结果。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 提供最小复现步骤；移除真实目标、凭据和个人数据。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ARTEX 版本或提交
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境与日志
+      description: 提供操作系统、浏览器或 Go 版本，并确认日志已脱敏。
+    validations:
+      required: false

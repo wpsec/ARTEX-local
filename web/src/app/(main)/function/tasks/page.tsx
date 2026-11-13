@@ -971,7 +971,7 @@ export default function TasksPage() {
                       onSort={sortTasksBy}
                     />
                     <TableHead className="text-right">Token</TableHead>
-                    <TableHead className="sticky right-0 z-10 bg-card text-right shadow-[-1px_0_0_0_hsl(var(--border))]">
+                    <TableHead className="sticky right-0 z-10 w-[13rem] min-w-[13rem] bg-card text-right shadow-[-1px_0_0_0_hsl(var(--border))]">
                       操作
                     </TableHead>
                   </TableRow>
@@ -1280,8 +1280,8 @@ const TaskRow = React.memo(function TaskRow({
           "—"
         )}
       </TableCell>
-      <TableCell className="sticky right-0 z-10 bg-card text-right shadow-[-1px_0_0_0_hsl(var(--border))] group-hover:bg-muted/50">
-        <div className="flex items-center justify-end gap-0.5">
+      <TableCell className="sticky right-0 z-10 w-[13rem] min-w-[13rem] bg-card text-right shadow-[-1px_0_0_0_hsl(var(--border))] group-hover:bg-muted">
+        <div className="flex items-center justify-end gap-0.5 [&>*]:shrink-0">
           <Button size="icon" variant="ghost" asChild aria-label="查看任务详情" title="查看任务详情">
             <Link href={`/function/tasks/detail?id=${encodeURIComponent(task.id)}`}>
               <EyeIcon />
@@ -2108,7 +2108,9 @@ function DeleteOptionFields({
           />
           <FieldContent>
             <FieldLabel htmlFor={`delete-files-${idPrefix}`}>任务文件</FieldLabel>
-            <FieldDescription>删除该任务工作目录中的上传文件、命令输出和其他产物。</FieldDescription>
+            <FieldDescription>
+              删除该任务工作目录中的上传文件、命令输出和其他产物，并清除对应的 noa 压缩原文归档。
+            </FieldDescription>
           </FieldContent>
         </Field>
         <Field orientation="horizontal">
@@ -2380,6 +2382,7 @@ function SourceTaskPicker({
   const tasksByID = React.useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const taskIDs = React.useMemo(() => tasks.map((task) => task.id), [tasks]);
   const atLimit = value.length >= MAX_SOURCE_TASKS;
+  const taskLabel = (task: Task) => task.name?.trim() || task.description?.trim() || `任务 #${task.id}`;
 
   const handleValueChange = (next: string[]) => {
     onValueChange(next.slice(0, MAX_SOURCE_TASKS));
@@ -2390,7 +2393,7 @@ function SourceTaskPicker({
       items={taskIDs}
       itemToStringValue={(taskID) => {
         const task = tasksByID.get(taskID);
-        return task ? `${task.id} ${task.description} ${task.goal}` : taskID;
+        return task ? `${task.id} ${taskLabel(task)} ${task.description} ${task.goal}` : taskID;
       }}
       multiple
       value={value}
@@ -2398,9 +2401,15 @@ function SourceTaskPicker({
     >
       <ComboboxChips>
         <ComboboxValue>
-          {value.map((taskID) => (
-            <ComboboxChip key={taskID}>#{taskID}</ComboboxChip>
-          ))}
+          {value.map((taskID) => {
+            const task = tasksByID.get(taskID);
+            const label = task ? taskLabel(task) : "未知任务";
+            return (
+              <ComboboxChip key={taskID} className="max-w-[18rem]" title={`#${taskID} · ${label}`}>
+                <span className="truncate">#{taskID} · {label}</span>
+              </ComboboxChip>
+            );
+          })}
         </ComboboxValue>
         <ComboboxChipsInput
           id="source-tasks"
@@ -2418,8 +2427,11 @@ function SourceTaskPicker({
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
-                      #{taskID} · {task?.description ?? "未知任务"}
+                      #{taskID} · {task ? taskLabel(task) : "未知任务"}
                     </p>
+                    {task?.name?.trim() && task.description && (
+                      <p className="text-muted-foreground truncate text-xs">{task.description}</p>
+                    )}
                     {task?.goal && <p className="text-muted-foreground truncate text-xs">{task.goal}</p>}
                   </div>
                   {task && <StatusBadge domain="task" value={task.status} />}

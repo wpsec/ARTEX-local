@@ -13,10 +13,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/sidequestion"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
 )
 
 const (
@@ -215,21 +214,56 @@ func (s *Server) pgDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.cancelConversation(c.ID)
-	s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == c.ID })
-	if err := pg.DeleteConversation(c.ID); err != nil {
-		writeErr(w, 500, err.Error())
+	if !s.beginConversationDelete([]int64{c.ID}) {
+		writeErr(w, http.StatusConflict, "对话正在删除")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"deleted": c.ID})
+	defer s.endConversationDelete([]int64{c.ID})
+	s.cancelConversation(c.ID)
+	drainCtx, cancelDrain := context.WithTimeout(r.Context(), taskDeleteDrainTimeout)
+	defer cancelDrain()
+	if err := s.waitConversationQuiescent(drainCtx, c.ID); err != nil {
+		writeErr(w, http.StatusConflict, "对话仍有运行中的 Agent，删除已取消")
+		return
+	}
+	if err := s.drainConversationSideQuestions(drainCtx, c.ID); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	stage, err := stageConversationFiles(s.m.dir, c.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := pg.DeleteConversation(c.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, rollbackConversationFiles(err, stage).Error())
+		return
+	}
+	response := map[string]any{"deleted": c.ID}
+	if err := stage.commit(); err != nil {
+		log.Printf("[conv %d] conversation deleted; file cleanup failed: %v", c.ID, err)
+		response["cleanup_warning"] = err.Error()
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func rollbackConversationFiles(cause error, stage *managedFileDeleteStage) error {
+	if stage == nil {
+		return cause
+	}
+	if err := stage.rollback(); err != nil {
+		return errors.Join(cause, fmt.Errorf("restore conversation files: %w", err))
+	}
+	return cause
 }
 
 const maxConversationDeleteBatch = 100
 
 type conversationDeleteItem struct {
-	ID    int64  `json:"id"`
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty"`
+	ID             int64  `json:"id"`
+	OK             bool   `json:"ok"`
+	Error          string `json:"error,omitempty"`
+	CleanupWarning string `json:"cleanup_warning,omitempty"`
 }
 
 func (s *Server) cancelConversation(id int64) {
@@ -239,6 +273,84 @@ func (s *Server) cancelConversation(id int64) {
 	s.chatMu.Unlock()
 	if cancel != nil {
 		cancel(agent.AbortChatStoppedByUser)
+	}
+}
+
+func (s *Server) beginConversationDelete(ids []int64) bool {
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	for _, id := range ids {
+		if s.conversationDeleting[s.convBusyKey(id)] {
+			return false
+		}
+	}
+	if s.conversationDeleting == nil {
+		s.conversationDeleting = make(map[string]bool, len(ids))
+	}
+	for _, id := range ids {
+		s.conversationDeleting[s.convBusyKey(id)] = true
+	}
+	return true
+}
+
+func (s *Server) endConversationDelete(ids []int64) {
+	s.chatMu.Lock()
+	for _, id := range ids {
+		delete(s.conversationDeleting, s.convBusyKey(id))
+	}
+	s.chatMu.Unlock()
+}
+
+func (s *Server) conversationIsDeleting(id int64) bool {
+	if id <= 0 {
+		return false
+	}
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	return s.conversationDeleting[s.convBusyKey(id)]
+}
+
+func (s *Server) beginConversationFileOp(id int64) bool {
+	key := s.convBusyKey(id)
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	if s.conversationDeleting[key] {
+		return false
+	}
+	if s.conversationFileOps == nil {
+		s.conversationFileOps = make(map[string]int)
+	}
+	s.conversationFileOps[key]++
+	return true
+}
+
+func (s *Server) endConversationFileOp(id int64) {
+	key := s.convBusyKey(id)
+	s.chatMu.Lock()
+	if s.conversationFileOps[key] <= 1 {
+		delete(s.conversationFileOps, key)
+	} else {
+		s.conversationFileOps[key]--
+	}
+	s.chatMu.Unlock()
+}
+
+func (s *Server) waitConversationQuiescent(ctx context.Context, id int64) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		s.chatMu.Lock()
+		key := s.convBusyKey(id)
+		busy := s.chatBusy[key] || s.conversationFileOps[key] > 0
+		s.chatMu.Unlock()
+		if !busy {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 
@@ -273,13 +385,51 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("ids 数量必须为 1-%d", maxConversationDeleteBatch))
 		return
 	}
+	if !s.beginConversationDelete(ids) {
+		writeErr(w, http.StatusConflict, "至少一个对话正在删除")
+		return
+	}
+	defer s.endConversationDelete(ids)
 	for _, id := range ids {
 		s.cancelConversation(id)
-		s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == id })
+	}
+	drainCtx, cancelDrain := context.WithTimeout(r.Context(), taskDeleteDrainTimeout)
+	defer cancelDrain()
+	for _, id := range ids {
+		if err := s.waitConversationQuiescent(drainCtx, id); err != nil {
+			writeErr(w, http.StatusConflict, "对话仍有运行中的 Agent，删除已取消")
+			return
+		}
+	}
+	for _, id := range ids {
+		if err := s.drainConversationSideQuestions(drainCtx, id); err != nil {
+			writeErr(w, http.StatusConflict, err.Error())
+			return
+		}
+	}
+	stages := make(map[int64]*managedFileDeleteStage, len(ids))
+	rollbackStages := func(cause error) error {
+		errs := []error{cause}
+		for i := len(ids) - 1; i >= 0; i-- {
+			if stage := stages[ids[i]]; stage != nil {
+				if err := stage.rollback(); err != nil {
+					errs = append(errs, fmt.Errorf("restore conversation %d files: %w", ids[i], err))
+				}
+			}
+		}
+		return errors.Join(errs...)
+	}
+	for _, id := range ids {
+		stage, err := stageConversationFiles(s.m.dir, id)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, rollbackStages(err).Error())
+			return
+		}
+		stages[id] = stage
 	}
 	deleted, err := pg.DeleteConversations(ids)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeErr(w, http.StatusInternalServerError, rollbackStages(err).Error())
 		return
 	}
 	deletedSet := make(map[int64]struct{}, len(deleted))
@@ -292,6 +442,12 @@ func (s *Server) pgDeleteConversationsBatch(w http.ResponseWriter, r *http.Reque
 		item := conversationDeleteItem{ID: id, OK: ok}
 		if !ok {
 			item.Error = "conversation not found"
+			if err := stages[id].rollback(); err != nil {
+				item.Error = errors.Join(errors.New(item.Error), err).Error()
+			}
+		} else if err := stages[id].commit(); err != nil {
+			item.CleanupWarning = err.Error()
+			log.Printf("[conv %d] conversation deleted; file cleanup failed: %v", id, err)
 		}
 		items = append(items, item)
 	}
@@ -418,6 +574,11 @@ func (s *Server) pgSendConversationMessage(w http.ResponseWriter, r *http.Reques
 
 	busyKey := s.convBusyKey(c.ID)
 	s.chatMu.Lock()
+	if s.conversationDeleting[busyKey] {
+		s.chatMu.Unlock()
+		writeErr(w, http.StatusConflict, "对话正在删除，无法发送新消息")
+		return
+	}
 	if s.chatBusy[busyKey] {
 		s.chatMu.Unlock()
 		writeErr(w, 409, "该会话正在处理上一条消息，请稍候")
@@ -469,7 +630,13 @@ func (s *Server) runConversation(c *db.Conversation, msg, busyKey string, userMe
 	if len(userMessage) == 1 {
 		ctx = intercept.WithReviewContext(ctx, "", intercept.ReviewBackground{Source: intercept.BackgroundUserMessage, Text: userMessage[0]})
 	}
-	go s.runConversationTurn(ctx, cancel, c, msg, busyKey)
+	if !s.goBackground(func() { s.runConversationTurn(ctx, cancel, c, msg, busyKey) }) {
+		cancel(agent.AbortShutdown)
+		s.chatMu.Lock()
+		delete(s.chatBusy, busyKey)
+		delete(s.chatCancel, busyKey)
+		s.chatMu.Unlock()
+	}
 }
 
 // runConversationSync runs ONE agent turn on a conversation and BLOCKS until the
@@ -488,6 +655,11 @@ func (s *Server) conversationRunContext(id int64, busyKey string) (context.Conte
 	// just this session. Registered under chatMu so the stop handler can find it.
 	ctx, cancel := context.WithCancelCause(intercept.WithConvID(s.ctx, id))
 	s.chatMu.Lock()
+	if s.conversationDeleting[busyKey] {
+		s.chatMu.Unlock()
+		cancel(agent.AbortChatStoppedByUser)
+		return ctx, cancel
+	}
 	s.chatCancel[busyKey] = cancel
 	s.chatMu.Unlock()
 	return ctx, cancel
@@ -639,7 +811,16 @@ func (s *Server) pumpLocked(agentKey string) {
 	for s.triggerActive[agentKey] < limit && len(s.triggerQ[agentKey]) > 0 {
 		item := s.nextTriggerRun(agentKey, cfg)
 		s.triggerActive[agentKey]++
-		go s.runAndPump(agentKey, item)
+		if !s.goBackground(func() { s.runAndPump(agentKey, item) }) {
+			s.triggerQ[agentKey] = nil
+			s.triggerActive[agentKey]--
+			if s.triggerActive[agentKey] <= 0 {
+				delete(s.triggerActive, agentKey)
+				delete(s.triggerQ, agentKey)
+				delete(s.triggerCfg, agentKey)
+			}
+			return
+		}
 	}
 }
 
@@ -813,6 +994,10 @@ func (s *Server) runTriggeredRun(item triggeredRun) {
 	}
 	busyKey := s.convBusyKey(c.ID)
 	s.chatMu.Lock()
+	if s.conversationDeleting[busyKey] {
+		s.chatMu.Unlock()
+		return
+	}
 	s.chatBusy[busyKey] = true
 	s.chatMu.Unlock()
 	s.runConversationSync(c, msg, busyKey)

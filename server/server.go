@@ -19,16 +19,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/llmpool"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/report"
-	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/intercept"
+	"github.com/wpsec/ARTEX-local/llmpool"
+	"github.com/wpsec/ARTEX-local/llmrec"
+	"github.com/wpsec/ARTEX-local/report"
+	"github.com/wpsec/ARTEX-local/traffic"
 )
 
 // BuildVersion is the backend application version, injected from cmd/artex at
@@ -42,9 +42,18 @@ type Server struct {
 	m      *Manager
 	engine *Engine
 	ctx    context.Context
+	cancel context.CancelFunc
 
-	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	lifecycleMu  sync.Mutex
+	closing      bool
+	closeOnce    sync.Once
+	backgroundWG sync.WaitGroup
+
+	skillDir     string // root directory for skill subdirectories
+	jwtKey       []byte // HS256 signing key loaded from / generated into keyDir/jwt.key
+	jwtKeyMu     sync.RWMutex
+	jwtKeyPath   string
+	authChangeMu sync.RWMutex
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -61,13 +70,14 @@ type Server struct {
 	llmOn     bool
 	llmProf   string // active LLM profile name (for llmrec tagging)
 
-	// chatBusy guards the per-task main-agent run: the chat handler launches the
-	// agent on the server's background ctx (not the request ctx) and returns
-	// immediately, so a page reload / proxy timeout can't abort a live run. This
-	// map serializes turns per task — one main-agent run at a time per task, so
-	// concurrent messages don't corrupt the shared exp<id>-main transcript.
+	// chatBusy guards task main-agent and chat conversation runs. Those runs use the
+	// server's background context so a page reload or proxy timeout cannot abort a
+	// live run, and the map serializes turns that share the same transcript.
 	chatMu   sync.Mutex
 	chatBusy map[string]bool
+	// conversationDeleting blocks new turns while file state is staged for deletion.
+	conversationDeleting map[string]bool
+	conversationFileOps  map[string]int
 	// chatCancel holds the cancel func for each in-flight conversation run (keyed by
 	// convBusyKey), so a manual stop can abort JUST that session's agent run. Set/
 	// cleared alongside chatBusy under chatMu. Aborting a run does NOT touch the P3
@@ -141,16 +151,25 @@ type triggeredRun struct {
 }
 
 func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDir string) *Server {
+	ctx, cancel := context.WithCancel(ctx)
 	key, err := loadOrCreateJWTKey(keyDir, dataDir)
 	if err != nil {
+		cancel()
 		log.Fatalf("[auth] JWT key: %v", err)
 	}
-	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, skillDir: skillDir, jwtKey: key, chatBusy: map[string]bool{},
-		chatCancel: map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
+	s := &Server{m: m, engine: NewEngine(m), ctx: ctx, cancel: cancel, skillDir: skillDir, jwtKey: key,
+		jwtKeyPath: filepath.Join(keyDir, jwtKeyFilename), chatBusy: map[string]bool{}, conversationDeleting: map[string]bool{},
+		conversationFileOps: map[string]int{},
+		chatCancel:          map[string]context.CancelCauseFunc{}, triggerQ: map[string][]triggeredRun{},
 		triggerActive: map[string]int{}, triggerCfg: map[string]triggerBehavior{},
 		profChatAgents: map[int64]*agent.ChatAgent{},
-		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
-		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
+		provByProfile:  map[int64]*provEntry{},
+		taskAgents:     map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
+	if !m.registerServer(s) {
+		s.Close()
+		return s
+	}
+	s.llmHealth = newLLMHealthRegistry(m.pg, s.goBackground)
 	seedInstalledSkillVisibility(m.pg, skillDir)
 	s.initSideQuestions()
 	// 熔断阈值/冷却是失败路径上的热参数，启动时把全局重试策略推给 Registry 一次；
@@ -226,16 +245,24 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		if err := s.seedFindingRetester(); err != nil {
 			log.Printf("[retester] seed: %v", err)
 		}
-		go s.evidenceStore().RunGC(s.ctx)
-		s.seedPythonInterpreter()     // 自定义脚本工具:开机检测 python 解释器入库(仅空时)
-		go newScheduler(s).Run(s.ctx) // P3 触发器调度(定时/finding/目标事件),仅自定义 agent
+		if err := m.pg.RemoveBundledBloodHoundMCP(); err != nil {
+			log.Printf("[mcp] 移除已内置的 BloodHound MCP 配置失败: %v", err)
+		}
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("ARTEX_BUNDLED_MCP_DEFAULTS")), "true") {
+			if err := m.pg.SeedBuiltinMCPServers(); err != nil {
+				log.Printf("[mcp] 内置 MCP 默认配置播种失败: %v", err)
+			}
+		}
+		s.goBackground(func() { s.evidenceStore().RunGC(s.ctx) })
+		s.seedPythonInterpreter()                             // 自定义脚本工具:开机检测 python 解释器入库(仅空时)
+		s.goBackground(func() { newScheduler(s).Run(s.ctx) }) // P3 触发器调度(定时/finding/目标事件),仅自定义 agent
 		// 漏洞 IM 推送投递引擎。与 Scheduler 并列但独立：推送的实时性要求(3s)
 		// 与触发器的业务节奏不同，且两者失败互不牵连——推送卡住不该影响 agent 触发。
-		go newNotifier(s).Run(s.ctx)
+		s.goBackground(func() { newNotifier(s).Run(s.ctx) })
 		// Fill the tool cache for any enabled MCP that has none yet (notably the
 		// seeded browser MCP on first run). Async so it never blocks startup.
-		go s.discoverEmptyMCPsOnStartup()
-		logSink.SetDB(ctx, m.pg) // restore last 100 log rows and enable async persistence
+		s.goBackground(s.discoverEmptyMCPsOnStartup)
+		logSink.SetDB(s.ctx, m.pg, s.goBackground) // restore history and track async persistence through shutdown
 	}
 	// precedence: persisted DB config > env.
 	if cfg, ok := s.loadLLMConfig(); ok {
@@ -254,7 +281,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
 	}
 	s.restoreTaskRuntimes()
-	go s.reconcileConcurrency()
+	s.goBackground(s.reconcileConcurrency)
 	s.startTaskArchiveWorker()
 	s.wireInterceptReviewer() // LLM 兜底审批:未命中拦截规则的命令交给模型判定
 	return s
@@ -812,6 +839,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/notify/deliveries/{id}/retry", s.notifyRetryDelivery)
 	mux.HandleFunc("POST /api/settings/web-search/test", s.testWebSearch)
 	mux.HandleFunc("GET /api/report", s.getReport)
+	mux.HandleFunc("GET /api/tasks/{id}/findings/{finding_id}/delivery-report", s.getFindingDeliveryReport)
+	mux.HandleFunc("PUT /api/tasks/{id}/findings/{finding_id}/delivery-report", s.saveFindingDeliveryReport)
+	mux.HandleFunc("POST /api/tasks/{id}/findings/{finding_id}/delivery-report/generate", s.generateFindingDeliveryReport)
 	mux.HandleFunc("GET /api/chat/mentions", s.searchChatMentions)
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // 方式1 文件上传:落到会话/任务工作目录 uploads/
@@ -1584,7 +1614,7 @@ func (s *Server) updateTaskLLMProfiles(w http.ResponseWriter, r *http.Request) {
 	// live slot and postpones an unavailable task's pause/queue transition until
 	// the call returns; a nudge lets an idle running task resume promptly.
 	t.Notify()
-	go s.reconcileConcurrency()
+	s.goBackground(s.reconcileConcurrency)
 	llmState := t.llmStateSnapshot()
 	result := map[string]any{
 		"id": t.ID, "llm_profile_ids": llmState.ProfileIDs,
@@ -2075,6 +2105,18 @@ func (s *Server) getFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	assets := s.resolveAssetIDs(f.AssetIDs)
 	dto := findingFromDB(f, assets)
+	if f.TaskID != nil {
+		delivery, err := s.m.pg.GetFindingDeliveryReport(*f.TaskID, f.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		if delivery != nil && delivery.Exists {
+			dto.DeliveryReport = delivery.Content
+			dto.DeliveryReportCVSSVector = delivery.CVSSVector
+			dto.DeliveryReportStale = delivery.EvidenceVersion != delivery.CurrentEvidenceVersion
+		}
+	}
 	if contextTaskID := strings.TrimSpace(r.URL.Query().Get("context_task")); contextTaskID != "" {
 		contextTask := s.m.ResolveTask(contextTaskID)
 		if contextTask == nil {
@@ -3470,7 +3512,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// 立即协调一次:关闭时放行全部排队,调高上限时补位启动,不必等下一个 tick。
-		go s.reconcileConcurrency()
+		s.goBackground(s.reconcileConcurrency)
 	}
 	if req.PythonInterp != nil {
 		if err := s.m.pg.SetSetting(settingPythonInterp, strings.TrimSpace(*req.PythonInterp)); err != nil {
@@ -3732,7 +3774,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		// a page reload / proxy timeout cancelled it mid-run ("context canceled"). The
 		// steps + final answer stream back live via SSE (worker="mainagent"), so the
 		// handler returns immediately and the browser never needs to hold the request.
-		go func() {
+		if !s.goBackground(func() {
 			defer func() {
 				s.finishTaskChat(t.ID, cancel)
 			}()
@@ -3755,7 +3797,9 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			if err != nil && ctx.Err() == nil {
 				s.engine.emitActivity(t, db.Activity{Worker: "mainagent", Kind: "text", IsError: true, Summary: "（主 Agent 出错：" + err.Error() + "）", MainSeg: segPtr})
 			}
-		}()
+		}) {
+			s.finishTaskChat(t.ID, cancel)
+		}
 		writeJSON(w, 202, map[string]any{"status": "accepted", "mode": "llm"})
 		return
 	}

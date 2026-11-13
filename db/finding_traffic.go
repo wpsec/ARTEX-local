@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/notify"
+	"github.com/wpsec/ARTEX-local/notify"
 )
 
 var (
@@ -44,6 +44,19 @@ type TrafficRef struct {
 	Role      string `json:"role"`
 	Note      string `json:"note"`
 }
+
+type FindingEvidenceQuote struct {
+	TrafficID  string `json:"traffic_id,omitempty"`
+	SnapshotID string `json:"snapshot_id,omitempty"`
+	Side       string `json:"side"`
+	Quote      string `json:"quote"`
+}
+
+const (
+	EvidenceCheckMatched     = "matched"
+	EvidenceCheckUnmatched   = "unmatched"
+	EvidenceCheckNotAssessed = "not_assessed"
+)
 
 func NormalizeTrafficRefs(refs []TrafficRef) ([]TrafficRef, error) {
 	out := make([]TrafficRef, 0, len(refs))
@@ -236,7 +249,13 @@ VALUES($1,$2,$3,$4,$5) ON CONFLICT(finding_id,snapshot_id) DO NOTHING`, findingI
 }
 
 func bumpEvidenceVersionTx(tx *sql.Tx, findingID int64) error {
-	_, err := tx.Exec(`UPDATE findings SET evidence_version=evidence_version+1 WHERE id=$1`, findingID)
+	_, err := tx.Exec(`UPDATE findings SET evidence_version=evidence_version+1,
+evidence_check_status=$2,evidence_check_note='流量证据已变化，需重新核验' WHERE id=$1`, findingID, EvidenceCheckNotAssessed)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE exploration_nodes SET payload=payload || jsonb_build_object('evidence_check_status',$2::text,'evidence_check_note',$3::text)
+WHERE id=(SELECT node_id FROM findings WHERE id=$1)`, findingID, EvidenceCheckNotAssessed, "流量证据已变化，需重新核验")
 	return err
 }
 
@@ -326,9 +345,11 @@ func (d *DB) EditFindingTraffic(ctx context.Context, findingID, bindingID, versi
 }
 
 type RecordFindingInput struct {
-	TaskID, ExplorationID, IntentID                      int64
-	VulnClass, Name, Severity, Summary, Evidence, Worker string
-	AssetIDs                                             []int64
+	TaskID, ExplorationID, IntentID                         int64
+	VulnClass, Name, Severity, Summary, Evidence, Worker    string
+	Counterevidence, EvidenceCheckStatus, EvidenceCheckNote string
+	AssetIDs                                                []int64
+	EvidenceQuotes                                          []FindingEvidenceQuote
 }
 
 type RecordedFinding struct {
@@ -361,7 +382,22 @@ func RecordFindingTx(ctx context.Context, tx *sql.Tx, in RecordFindingInput, pre
 			return nil, errors.New("intent_id 必须是本任务的意图（关联任务意图只读）")
 		}
 	}
-	payload, _ := json.Marshal(map[string]any{"vulnclass": in.VulnClass, "name": in.Name, "severity": in.Severity, "summary": in.Summary, "evidence": map[string]any{"by": in.Worker, "poc": in.Evidence}})
+	if in.EvidenceCheckStatus == "" {
+		in.EvidenceCheckStatus = EvidenceCheckNotAssessed
+	}
+	if in.EvidenceQuotes == nil {
+		in.EvidenceQuotes = []FindingEvidenceQuote{}
+	}
+	quotesJSON, err := json.Marshal(in.EvidenceQuotes)
+	if err != nil {
+		return nil, err
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"vulnclass": in.VulnClass, "name": in.Name, "severity": in.Severity, "summary": in.Summary,
+		"evidence":        map[string]any{"by": in.Worker, "poc": in.Evidence},
+		"counterevidence": in.Counterevidence, "evidence_quotes": in.EvidenceQuotes,
+		"evidence_check_status": in.EvidenceCheckStatus, "evidence_check_note": in.EvidenceCheckNote,
+	})
 	out := &RecordedFinding{}
 	if err := tx.QueryRow(`INSERT INTO exploration_nodes(exploration_id,kind,payload,priority,state,origin)
 VALUES($1,'finding',$2,9,'confirmed',$3) RETURNING id`, in.ExplorationID, string(payload), in.Worker).Scan(&out.NodeID); err != nil {
@@ -382,8 +418,11 @@ VALUES($1,'finding',$2,9,'confirmed',$3) RETURNING id`, in.ExplorationID, string
 		assets = []int64{}
 	}
 	raw, _ := json.Marshal(assets)
-	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker,asset_ids)
-VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker, string(raw)).Scan(&out.FindingID); err != nil {
+	if err := tx.QueryRow(`INSERT INTO findings(task_id,node_id,vulnclass,name,severity,summary,evidence,worker,asset_ids,
+evidence_check_status,evidence_check_note,evidence_quotes,counterevidence)
+VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13) RETURNING id`,
+		in.TaskID, out.NodeID, in.VulnClass, in.Name, in.Severity, in.Summary, in.Evidence, in.Worker, string(raw),
+		in.EvidenceCheckStatus, in.EvidenceCheckNote, string(quotesJSON), in.Counterevidence).Scan(&out.FindingID); err != nil {
 		return nil, err
 	}
 	// 在**同一事务**里登记一条推送事件：提交即保证「漏洞落库」与「推送任务存在」
@@ -402,7 +441,6 @@ VALUES(NULLIF($1,0),$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, in.TaskID, out.NodeI
 	if err := AddFindingTrafficTx(tx, out.FindingID, prepared); err != nil {
 		return nil, err
 	}
-	var err error
 	out.Traffic, err = FindingTrafficTx(tx, out.FindingID)
 	return out, err
 }

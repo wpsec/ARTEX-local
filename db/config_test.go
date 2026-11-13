@@ -8,9 +8,36 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Autumn-27/norma/skill"
 )
+
+func TestBundledWebSkillsReferenceSeededZAPMCP(t *testing.T) {
+	reg, err := skill.LoadDir(filepath.Join("..", "skills"))
+	if err != nil {
+		t.Fatalf("load bundled skills: %v", err)
+	}
+
+	for _, name := range []string{"web-app-penetration-testing", "api-security-testing"} {
+		s, ok := reg.Get(name)
+		if !ok {
+			t.Fatalf("bundled Skill %q was not loaded", name)
+		}
+		found := false
+		for _, mcp := range s.MCPs {
+			if mcp == builtinOWASPZAPMCPName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Skill %q does not declare the seeded ZAP MCP name %q; mcps=%v", name, builtinOWASPZAPMCPName, s.MCPs)
+		}
+	}
+}
 
 // TestPoolProfilesOrder pins the failover chain query: keyless profiles can't
 // serve a request and excluded ones aren't fallback targets, so neither belongs
@@ -60,6 +87,97 @@ func TestPoolProfilesOrder(t *testing.T) {
 	}
 }
 
+func TestUpgradePromptIfCurrentPreservesCustomAndHistory(t *testing.T) {
+	dsn := isolatedTestDSN(t)
+	d, err := Open(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	a, err := d.CreateAgent("test_prompt_upgrade", "test prompt upgrade", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.SavePrompt(a.ID, "old default", "built-in", "system"); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := d.UpgradePromptIfCurrent(a.ID, "old default", "new default")
+	if err != nil || !changed {
+		t.Fatalf("upgrade old default: changed=%v err=%v", changed, err)
+	}
+	versions, err := d.ListPromptVersions(a.ID)
+	if err != nil || len(versions) != 2 || versions[0].Template != "new default" || versions[1].Template != "old default" {
+		t.Fatalf("prompt history: %+v err=%v", versions, err)
+	}
+	changed, err = d.UpgradePromptIfCurrent(a.ID, "old default", "new default")
+	if err != nil || changed {
+		t.Fatalf("repeat upgrade: changed=%v err=%v", changed, err)
+	}
+	if _, err := d.SavePrompt(a.ID, "customized", "user", "user"); err != nil {
+		t.Fatal(err)
+	}
+	changed, err = d.UpgradePromptIfCurrent(a.ID, "old default", "new default")
+	current, currentErr := d.CurrentPrompt(a.ID)
+	versions, historyErr := d.ListPromptVersions(a.ID)
+	if err != nil || changed || currentErr != nil || current != "customized" || historyErr != nil || len(versions) != 3 {
+		t.Fatalf("custom prompt changed: changed=%v current=%q versions=%d errors=%v/%v/%v", changed, current, len(versions), err, currentErr, historyErr)
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := d.SavePrompt(a.ID, "old default", "fixture", "system"); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+		go func() {
+			<-start
+			_, err := d.UpgradePromptIfCurrent(a.ID, "old default", "new default")
+			errs <- err
+		}()
+		go func() {
+			<-start
+			_, err := d.SavePrompt(a.ID, "concurrent user edit", "user", "user")
+			errs <- err
+		}()
+		close(start)
+		for j := 0; j < 2; j++ {
+			if err := <-errs; err != nil {
+				t.Fatalf("concurrent prompt write: %v", err)
+			}
+		}
+		current, err := d.CurrentPrompt(a.ID)
+		if err != nil || current != "concurrent user edit" {
+			t.Fatalf("concurrent user edit lost: current=%q err=%v", current, err)
+		}
+	}
+	for i := 0; i < 10; i++ {
+		fresh, err := d.CreateAgent(fmt.Sprintf("test_prompt_seed_%d", i), "seed race", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		errs := make(chan error, 2)
+		go func() {
+			<-start
+			errs <- d.SeedPromptIfEmpty(fresh.ID, "seed default")
+		}()
+		go func() {
+			<-start
+			_, err := d.SavePrompt(fresh.ID, "concurrent user edit", "user", "user")
+			errs <- err
+		}()
+		close(start)
+		for j := 0; j < 2; j++ {
+			if err := <-errs; err != nil {
+				t.Fatalf("concurrent seed and edit: %v", err)
+			}
+		}
+		current, err := d.CurrentPrompt(fresh.ID)
+		if err != nil || current != "concurrent user edit" {
+			t.Fatalf("seed overwrote concurrent user edit: current=%q err=%v", current, err)
+		}
+	}
+}
+
 func TestDeleteProfileContextHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -105,7 +223,7 @@ func TestBuiltinSkillVisibilitySeedsAndPreservesOptOut(t *testing.T) {
 		"api-security-testing",
 		"owasp-top-10-testing",
 		"find-security-vulnerabilities-in-code",
-		"analyzing-golang-malware-with-ghidra",
+		"playwright-cli",
 	}
 	for _, name := range skillNames {
 		if _, err := d.Exec(`DELETE FROM agent_skill_visibility WHERE agent_id=$1 AND skill_name=$2`, ag.ID, name); err != nil {

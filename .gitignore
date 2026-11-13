@@ -25,7 +25,8 @@ web/next-env.d.ts
 *.swo
 
 # docs
-/docs/
+/docs/*
+!/docs/交付报告规范.md
 
 # os
 .DS_Store

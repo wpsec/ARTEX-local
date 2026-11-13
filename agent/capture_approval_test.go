@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/guard"
-	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	"github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/guard"
+	"github.com/wpsec/ARTEX-local/intercept"
 )
 
 // Exercise the actual SDK event -> hook -> execution -> result path. No real
@@ -36,7 +36,7 @@ func TestCaptureApprovalLifecycle(t *testing.T) {
 	if err := ic.SetEnabledTools([]string{"ApprovalAuditProbe"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, AskTimeoutSeconds: 1, AskTimeoutAction: "allow"}); err != nil {
+	if err := ic.SetJudgeConfig(intercept.JudgeConfig{Enabled: true, FailAction: "allow", AskTimeoutSeconds: 1, AskTimeoutAction: "allow"}); err != nil {
 		t.Fatal(err)
 	}
 

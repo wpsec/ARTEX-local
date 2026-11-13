@@ -2,6 +2,7 @@ package agent
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/Autumn-27/norma/agentcore"
@@ -33,16 +34,36 @@ func enableNoa(opts *agentcore.Options, enabled func() bool, archiveRoot, sessio
 	if opts.OnWarn == nil {
 		opts.OnWarn = onWarn
 	}
+	archiveBaseDir := filepath.Join(archiveRoot, "noa")
+	if archiveRoot == "" {
+		warnNoaEnable(onWarn, "noa 压缩启用失败,回退内置压缩:归档目录未配置")
+		return
+	}
+	// 压缩归档含原始对话和工具结果；上游按 0644 写文件，因此用私有父目录限制本机其他账号读取。
+	if err := os.MkdirAll(archiveBaseDir, 0o700); err != nil {
+		warnNoaEnable(onWarn, "noa 压缩启用失败,回退内置压缩:创建归档目录: "+err.Error())
+		return
+	}
+	if err := os.Chmod(archiveBaseDir, 0o700); err != nil {
+		warnNoaEnable(onWarn, "noa 压缩启用失败,回退内置压缩:设置归档目录权限: "+err.Error())
+		return
+	}
 	if err := noaadapter.Enable(opts, noaadapter.Options{
-		ArchiveBaseDir: filepath.Join(archiveRoot, "noa"),
+		ArchiveBaseDir: archiveBaseDir,
 		SessionID:      sessionID,
 		OnWarn:         onWarn,
 	}); err != nil {
-		if onWarn != nil {
-			onWarn("noa 压缩启用失败,回退内置压缩:" + err.Error())
-		}
+		warnNoaEnable(onWarn, "noa 压缩启用失败,回退内置压缩:"+err.Error())
 		return
 	}
 	// Compactor 覆盖 Compaction,但两者并存时 agentcore 每次会告警;明确清掉。
 	opts.Compaction = nil
+}
+
+func warnNoaEnable(onWarn func(string), message string) {
+	if onWarn != nil {
+		onWarn(message)
+		return
+	}
+	log.Printf("[noa] %s", message)
 }

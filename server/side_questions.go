@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/sidequestion"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/transcript"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/llmrec"
+	"github.com/wpsec/ARTEX-local/sidequestion"
 )
 
 type sideRun struct {
@@ -74,7 +74,7 @@ func (s *Server) initSideQuestions() {
 		s.side.seen[key] = [2]int64{snap.RunID, snap.Version}
 		s.side.pending[key] = snap
 	})
-	go func() {
+	if !s.goBackground(func() {
 		defer close(s.side.done)
 		tick := time.NewTicker(250 * time.Millisecond)
 		defer tick.Stop()
@@ -87,7 +87,9 @@ func (s *Server) initSideQuestions() {
 				return
 			}
 		}
-	}()
+	}) {
+		close(s.side.done)
+	}
 }
 
 func (s *Server) flushSideSnapshots() {
@@ -174,6 +176,31 @@ func (s *Server) drainTaskSideQuestions(ctx context.Context, taskID string) erro
 	return nil
 }
 
+func (s *Server) drainConversationSideQuestions(ctx context.Context, conversationID int64) error {
+	if s.side == nil {
+		return nil
+	}
+	s.side.commands.Lock()
+	done := s.cancelSideWhere(func(p sidequestion.Parent) bool { return p.ConversationID == conversationID })
+	s.side.commands.Unlock()
+	for _, ch := range done {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	s.flushSideSnapshots()
+	s.side.mu.Lock()
+	defer s.side.mu.Unlock()
+	for _, snap := range s.side.pending {
+		if snap.Parent.ConversationID == conversationID {
+			return errors.New("对话旁路上下文尚未保存，请重试")
+		}
+	}
+	return nil
+}
+
 func (s *Server) cancelWorkerSide(taskID string, expID, iid int64) {
 	if s.side == nil {
 		return
@@ -226,6 +253,13 @@ func (s *Server) sideParent(w http.ResponseWriter, r *http.Request, kind string)
 		}
 		if c == nil {
 			writeErr(w, 404, "conversation not found")
+			return p, false
+		}
+		s.chatMu.Lock()
+		deleting := s.conversationDeleting[s.convBusyKey(id)]
+		s.chatMu.Unlock()
+		if deleting {
+			writeErr(w, http.StatusConflict, "对话正在删除")
 			return p, false
 		}
 		p.ConversationID = id
@@ -290,6 +324,10 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 	if r.Method == "DELETE" {
 		s.side.commands.Lock()
 		defer s.side.commands.Unlock()
+		if s.conversationIsDeleting(p.ConversationID) {
+			writeErr(w, http.StatusConflict, "对话正在删除")
+			return
+		}
 		s.side.mu.Lock()
 		for _, run := range s.side.runs {
 			if run.key == key {
@@ -354,6 +392,10 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 	}
 	s.side.commands.Lock()
 	defer s.side.commands.Unlock()
+	if s.conversationIsDeleting(p.ConversationID) {
+		writeErr(w, http.StatusConflict, "对话正在删除")
+		return
+	}
 	if p.TaskID > 0 && s.engine.IsDeleting(strconv.FormatInt(p.TaskID, 10)) {
 		writeErr(w, 409, "任务正在归档或删除")
 		return
@@ -413,7 +455,12 @@ func (s *Server) handleSideQuestions(w http.ResponseWriter, r *http.Request, p s
 		s.side.mu.Lock()
 		s.side.runs[e.ID] = sideRun{key: key, parent: p, cancel: cancel, done: make(chan struct{})}
 		s.side.mu.Unlock()
-		go s.runSide(ctx, cancel, *e, p, provider, *snap, agentQuestion)
+		if !s.goBackground(func() { s.runSide(ctx, cancel, *e, p, provider, *snap, agentQuestion) }) {
+			cancel()
+			s.side.mu.Lock()
+			delete(s.side.runs, e.ID)
+			s.side.mu.Unlock()
+		}
 	}
 	writeJSON(w, 202, e)
 }
@@ -434,7 +481,9 @@ func (s *Server) runSide(ctx context.Context, cancel context.CancelFunc, e sideq
 	}
 	// Deletions can race between request insertion and registration. Observe the
 	// persisted lifecycle even while a provider is blocked without emitting text.
-	go func() {
+	watchDone := make(chan struct{})
+	if !s.goBackground(func() {
+		defer close(watchDone)
 		tick := time.NewTicker(500 * time.Millisecond)
 		defer tick.Stop()
 		for {
@@ -449,6 +498,13 @@ func (s *Server) runSide(ctx context.Context, cancel context.CancelFunc, e sideq
 				}
 			}
 		}
+	}) {
+		cancel()
+		return
+	}
+	defer func() {
+		cancel()
+		<-watchDone
 	}()
 	lastSave := time.Now()
 	persist := func() (bool, error) {

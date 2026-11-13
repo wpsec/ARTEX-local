@@ -91,9 +91,12 @@ command -v go >/dev/null 2>&1 || die "未检测到 Go（项目需要 Go 1.26 或
 
 ARTEX_GOSUMDB="${ARTEX_GOSUMDB:-sum.golang.org}"
 if [ -z "${ARTEX_BUILD_VERSION:-}" ]; then
-  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if [ -f VERSION ]; then
+    ARTEX_BUILD_VERSION="$(tr -d '[:space:]' < VERSION)"
+  fi
+  if [ -z "${ARTEX_BUILD_VERSION:-}" ] && command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ARTEX_BUILD_VERSION="$(git describe --tags --always --dirty)"
-  else
+  elif [ -z "${ARTEX_BUILD_VERSION:-}" ]; then
     ARTEX_BUILD_VERSION="dev"
   fi
 fi

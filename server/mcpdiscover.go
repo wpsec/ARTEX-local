@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/mcphttp"
 	"github.com/Autumn-27/norma/mcp"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/mcphttp"
 )
 
 // mcpClient is the shared surface of a connected MCP server (stdio, Streamable HTTP,
@@ -22,26 +23,51 @@ type mcpClient interface {
 
 // connectMCP dials one MCP server per its transport. Callers must Close the client.
 func connectMCP(ctx context.Context, m *db.MCPServer) (mcpClient, error) {
+	if err := validateMCPConfig(m); err != nil {
+		return nil, err
+	}
 	switch m.Transport {
 	case "stdio":
-		if m.Command == "" {
-			return nil, fmt.Errorf("stdio 传输缺少命令")
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
 		}
-		return mcp.NewStdioClient(ctx, m.Name, m.Command, jsonStrMap(m.Env), jsonStrSlice(m.Args)...)
+		return mcp.NewStdioClient(ctx, m.Name, m.Command, env, jsonStrSlice(m.Args)...)
 	case "http":
-		if m.URL == "" {
-			return nil, fmt.Errorf("http 传输缺少 URL")
-		}
 		// env map doubles as HTTP headers (e.g. Authorization).
-		return mcphttp.New(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
-	case "sse":
-		if m.URL == "" {
-			return nil, fmt.Errorf("sse 传输缺少 URL")
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
 		}
-		return mcphttp.NewSSE(ctx, m.Name, m.URL, jsonStrMap(m.Env), m.Insecure)
+		return mcphttp.New(ctx, m.Name, m.URL, env, m.Insecure)
+	case "sse":
+		env, err := resolveMCPEnv(m.Env)
+		if err != nil {
+			return nil, err
+		}
+		return mcphttp.NewSSE(ctx, m.Name, m.URL, env, m.Insecure)
 	default:
 		return nil, fmt.Errorf("未知传输方式 %q", m.Transport)
 	}
+}
+
+func validateMCPConfig(m *db.MCPServer) error {
+	if m == nil {
+		return fmt.Errorf("MCP 配置为空")
+	}
+	switch m.Transport {
+	case "stdio":
+		if strings.TrimSpace(m.Command) == "" {
+			return fmt.Errorf("stdio 传输缺少命令")
+		}
+	case "http", "sse":
+		if strings.TrimSpace(m.URL) == "" {
+			return fmt.Errorf("%s 传输缺少 URL", m.Transport)
+		}
+	default:
+		return fmt.Errorf("未知传输方式 %q", m.Transport)
+	}
+	return nil
 }
 
 // discoverAndCacheMCP connects to one MCP, lists its tools, and persists the tool
@@ -78,7 +104,14 @@ func (s *Server) discoverEmptyMCPsOnStartup() {
 		return
 	}
 	for _, m := range servers {
-		if !m.Enabled || len(m.Tools) > 0 {
+		if !m.Enabled {
+			continue
+		}
+		if err := validateMCPConfig(m); err != nil {
+			log.Printf("[mcp] 启动自动发现跳过 %s: %v", m.Name, err)
+			continue
+		}
+		if len(m.Tools) > 0 {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(s.ctx, 90*time.Second)

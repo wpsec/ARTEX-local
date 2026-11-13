@@ -43,6 +43,8 @@ const emptyForm: FormState = {
   insecure: false,
 };
 
+const mcpSecretRef = (name: string) => `\${ARTEX_MCP_SECRET_${name}}`;
+
 export default function MCPPage() {
   const [servers, setServers] = React.useState<MCPServer[]>([]);
   const [agents, setAgents] = React.useState<Agent[]>([]);
@@ -52,6 +54,7 @@ export default function MCPPage() {
   const [editing, setEditing] = React.useState<MCPServer | null>(null); // null = add mode
   const [tab, setTab] = React.useState<"config" | "tools">("config");
   const [form, setForm] = React.useState<FormState>(emptyForm);
+  const [presetDefaultDisabled, setPresetDefaultDisabled] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [tools, setTools] = React.useState<MCPTool[]>([]);
   const [toolsLoading, setToolsLoading] = React.useState(false);
@@ -101,14 +104,33 @@ export default function MCPPage() {
 
   function openAdd() {
     setEditing(null);
+    setPresetDefaultDisabled(false);
     setForm(emptyForm);
     setTools([]);
     setTab("config");
     setOpen(true);
   }
 
+  function openZAPPreset() {
+    setEditing(null);
+    setPresetDefaultDisabled(true);
+    setTools([]);
+    setTab("config");
+    setForm({
+      name: "OWASP ZAP",
+      transport: "http",
+      command: "",
+      args: "",
+      url: "http://127.0.0.1:8282",
+      env: `Authorization=${mcpSecretRef("ZAP_KEY")}`,
+      insecure: false,
+    });
+    setOpen(true);
+  }
+
   function openEdit(s: MCPServer) {
     setEditing(s);
+    setPresetDefaultDisabled(false);
     setForm({
       name: s.name,
       transport: s.transport,
@@ -169,7 +191,7 @@ export default function MCPPage() {
       await api.saveMcpServer({
         ...(editing ? { id: editing.id } : {}),
         name: form.name.trim(),
-        enabled: editing ? editing.enabled : true,
+        enabled: editing ? editing.enabled : !presetDefaultDisabled,
         ...base,
       });
       toast.success(editing ? "已保存" : "已添加 MCP 服务器");
@@ -374,16 +396,29 @@ export default function MCPPage() {
         <p className="text-muted-foreground text-sm">外部 MCP 工具服务器 · 按 Agent 授权可见</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap gap-3">
         <button
           type="button"
           onClick={openAdd}
-          className="text-foreground/70 border-foreground/70 hover:bg-muted/60 hover:shadow-sm flex min-h-[116px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed transition"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-foreground/70 border-dashed px-4 text-foreground/70 transition hover:bg-muted/60 hover:shadow-sm"
         >
-          <PlusIcon className="size-6" />
+          <PlusIcon className="size-5" />
           <span className="text-sm">添加 MCP</span>
         </button>
 
+        {!servers.some((s) => s.name === "OWASP ZAP") && (
+          <button
+            type="button"
+            onClick={openZAPPreset}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-foreground/70 border-dashed px-4 text-foreground/70 transition hover:bg-muted/60 hover:shadow-sm"
+          >
+            <PlusIcon className="size-5" />
+            <span className="text-sm">OWASP ZAP 预设</span>
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {servers.map((s) => (
           <Card
             key={s.id}
@@ -446,7 +481,9 @@ export default function MCPPage() {
           <SheetHeader>
             <SheetTitle>{editing ? editing.name : "添加 MCP 服务器"}</SheetTitle>
             <SheetDescription>
-              stdio（本地起进程）或 http（远程 Streamable HTTP）
+              stdio 的 env 是子进程环境变量；http/sse 的 env 是请求头。使用 {mcpSecretRef("NAME")} 引用 ARTEX
+              进程环境变量中的凭据。
+              {presetDefaultDisabled && " 此预设保存后默认关闭且不授权给任何 Agent。"}
             </SheetDescription>
           </SheetHeader>
 

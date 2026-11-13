@@ -25,6 +25,7 @@ import { api } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
+import { DeliveryReportSection } from "./_components/delivery-report-section";
 import { FindingLineageView } from "./lineage";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
@@ -44,6 +45,17 @@ function fmtTime(ts: string) {
   return new Date(ts).toLocaleString("zh-CN");
 }
 
+function evidenceCheckLabel(status: Finding["evidence_check_status"]) {
+  switch (status) {
+    case "matched":
+      return "引用原文已匹配";
+    case "unmatched":
+      return "存在未匹配引用";
+    default:
+      return "尚未核验";
+  }
+}
+
 // FieldRow is one label/value line in the right-hand status panel.
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -58,6 +70,10 @@ function FindingDetailInner() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const contextTaskId = searchParams.get("context_task") ?? "";
+  const backHref = contextTaskId
+    ? `/function/tasks/detail?id=${encodeURIComponent(contextTaskId)}&tab=findings`
+    : "/function/findings";
+  const backLabel = contextTaskId ? "返回任务发现" : "返回发现列表";
   const [finding, setFinding] = React.useState<Finding | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [tab, setTab] = React.useState("overview");
@@ -117,8 +133,8 @@ function FindingDetailInner() {
         <p className="text-muted-foreground">{loaded ? `未找到发现 ${id}` : "加载中…"}</p>
         {loaded && (
           <Button asChild variant="outline">
-            <Link href="/function/findings">
-              <ArrowLeftIcon /> 返回发现列表
+            <Link href={backHref}>
+              <ArrowLeftIcon /> {backLabel}
             </Link>
           </Button>
         )}
@@ -127,6 +143,14 @@ function FindingDetailInner() {
   }
 
   const title = finding.name || finding.vulnclass || "未分类";
+  const evidenceQuotes = Array.from(
+    new Map(
+      (finding.evidence_quotes ?? []).map((quote) => [
+        JSON.stringify([quote.snapshot_id, quote.traffic_id, quote.side, quote.quote]),
+        quote,
+      ]),
+    ).values(),
+  );
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col gap-0">
@@ -135,7 +159,7 @@ function FindingDetailInner() {
         <div className="flex flex-wrap items-center gap-2">
           <SidebarTrigger className="-ml-1" />
           <Button asChild variant="ghost" size="icon" className="size-7">
-            <Link href="/function/findings">
+            <Link href={backHref}>
               <ArrowLeftIcon />
             </Link>
           </Button>
@@ -187,6 +211,44 @@ function FindingDetailInner() {
                   )}
                 </CardContent>
               </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">证据原文引用</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">
+                      {evidenceCheckLabel(finding.evidence_check_status)}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      原文匹配仅用于定位证据，不代表漏洞已确认。
+                    </span>
+                  </div>
+                  {finding.evidence_check_note && (
+                    <p className="text-muted-foreground text-sm">{finding.evidence_check_note}</p>
+                  )}
+                  {evidenceQuotes.map((quote) => (
+                    <div
+                      key={JSON.stringify([quote.snapshot_id, quote.traffic_id, quote.side, quote.quote])}
+                      className="space-y-1"
+                    >
+                      <p className="text-muted-foreground text-xs">
+                        {quote.side === "request" ? "请求" : "响应"}
+                        {quote.traffic_id ? ` · 流量 ${quote.traffic_id}` : ""}
+                      </p>
+                      <pre className="overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap">
+                        {quote.quote}
+                      </pre>
+                    </div>
+                  ))}
+                  {finding.counterevidence && (
+                    <div className="space-y-1 border-t pt-3">
+                      <p className="text-xs text-muted-foreground">反证与未成立路径</p>
+                      <p className="whitespace-pre-wrap text-sm">{finding.counterevidence}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
               <FindingTrafficPanel
                 key={id}
                 findingId={id}
@@ -213,6 +275,12 @@ function FindingDetailInner() {
                   )}
                 </CardContent>
               </Card>
+              <DeliveryReportSection
+                content={finding.delivery_report}
+                cvssVector={finding.delivery_report_cvss_vector}
+                stale={finding.delivery_report_stale}
+                hasDetailedReport={Boolean(finding.report)}
+              />
             </div>
 
             {/* 右栏：状态区 */}

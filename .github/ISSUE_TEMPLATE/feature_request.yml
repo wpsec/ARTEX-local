@@ -1,0 +1,25 @@
+name: 功能建议
+description: 提出产品或开发体验改进
+title: "[建议] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+      description: 描述当前工作流中的限制或困难。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 说明期望的行为、交互或开发流程。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已考虑的替代方案
+    validations:
+      required: false

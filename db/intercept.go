@@ -114,6 +114,14 @@ func (d *DB) CreateInterceptPending(ruleID, convID int64, taskID, agentName, too
 	if len(raw) == 0 {
 		raw = json.RawMessage("{}")
 	}
+	safeInput, err := interceptJSONBSafe(raw)
+	if err != nil {
+		return 0, fmt.Errorf("encode intercept tool input for jsonb: %w", err)
+	}
+	audit, err := firstAudit(audits)
+	if err != nil {
+		return 0, err
+	}
 	var convIDPtr *int64
 	if convID != 0 {
 		convIDPtr = &convID
@@ -128,10 +136,10 @@ func (d *DB) CreateInterceptPending(ruleID, convID int64, taskID, agentName, too
 		ruleIDPtr = &ruleID
 	}
 	var id int64
-	err := d.QueryRow(`
+	err = d.QueryRow(`
 INSERT INTO intercept_pending(rule_id, conversation_id, task_id, agent_name, tool_name, tool_input, reason, decision_source, audit)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-		ruleIDPtr, convIDPtr, taskIDPtr, agentName, toolName, raw, reason, interceptSource(ruleID, reason), firstAudit(audits)).Scan(&id)
+		ruleIDPtr, convIDPtr, taskIDPtr, agentName, toolName, safeInput, reason, interceptSource(ruleID, reason), audit).Scan(&id)
 	return id, err
 }
 
@@ -150,6 +158,14 @@ func (d *DB) CreateDecidedIntercept(ruleID, convID int64, taskID, agentName, too
 	if len(raw) == 0 {
 		raw = json.RawMessage("{}")
 	}
+	safeInput, err := interceptJSONBSafe(raw)
+	if err != nil {
+		return 0, fmt.Errorf("encode intercept tool input for jsonb: %w", err)
+	}
+	audit, err := firstAudit(audits)
+	if err != nil {
+		return 0, err
+	}
 	var convIDPtr *int64
 	if convID != 0 {
 		convIDPtr = &convID
@@ -164,10 +180,10 @@ func (d *DB) CreateDecidedIntercept(ruleID, convID int64, taskID, agentName, too
 		ruleIDPtr = &ruleID
 	}
 	var id int64
-	err := d.QueryRow(`
+	err = d.QueryRow(`
 INSERT INTO intercept_pending(rule_id, conversation_id, task_id, agent_name, tool_name, tool_input, status, reason, decided_at, decision_source, audit)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10) RETURNING id`,
-		ruleIDPtr, convIDPtr, taskIDPtr, agentName, toolName, raw, status, reason, interceptSource(ruleID, reason), firstAudit(audits)).Scan(&id)
+		ruleIDPtr, convIDPtr, taskIDPtr, agentName, toolName, safeInput, status, reason, interceptSource(ruleID, reason), audit).Scan(&id)
 	return id, err
 }
 
@@ -254,15 +270,19 @@ func interceptSource(ruleID int64, reason string) string {
 	return "unknown"
 }
 
-func firstAudit(audits []*InterceptAudit) any {
+func firstAudit(audits []*InterceptAudit) (any, error) {
 	if len(audits) == 0 || audits[0] == nil {
-		return nil
+		return nil, nil
 	}
 	raw, err := json.Marshal(audits[0])
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("marshal intercept audit: %w", err)
 	}
-	return raw
+	safe, err := interceptJSONBSafe(raw)
+	if err != nil {
+		return nil, fmt.Errorf("encode intercept audit for jsonb: %w", err)
+	}
+	return safe, nil
 }
 
 // ListAllIntercepts returns up to limit intercept_pending rows (newest first)

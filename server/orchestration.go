@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 // jsonResult marshals v to a JSON tool result.
@@ -419,35 +420,88 @@ func (s *Server) toolGetTaskNodeDetail() actool.CoreTool {
 		})
 }
 
-// toolUpdateFindingReport writes/overwrites a finding's detailed Markdown report.
-// finding_id is the id report_finding returned ("finding recorded: <id>", the
-// finding node id). The write (SetFindingReportByNodeID) is keyed by node_id and
-// task-agnostic, so this host tool needs no task_id / exploration store.
+const previousFindingReportToolDescription = "为已登记的漏洞一次写入/更新【详细报告】和【交付报告】(均为 Markdown,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。交付报告面向开发修复，按必要性和证据给出简洁、可复测的内容；保存时 ARTEX 会自动附加本漏洞全部已绑定 HTTP 流量的完整原始请求和响应，不要在正文重复粘贴这些报文。cvss_vector 提供完整 CVSS 4.0 Base 向量。"
+
+const findingReportToolDescription = "为已登记的漏洞一次写入/更新【详细报告】和【交付报告】(Markdown 全文，整段覆盖)。finding_id 传 finding_node_id（report_finding 第一行的数字）。" + agent.DeliveryReportSaveGuidance + "保存时 ARTEX 会在证据说明内成对附加全部已绑定 HTTP 请求和响应，正文指明对应证据编号与用途，不要重复抄写绑定报文。cvss_vector 提供完整 CVSS 4.0 Base 向量。"
+
+// finding_id remains the finding node ID used by native report callers; writes
+// are task-agnostic and retain the existing evidence-version transaction.
 func (s *Server) toolUpdateFindingReport() actool.CoreTool {
+	evidenceQuotes := agent.EvidenceQuotesSchema()
+	evidenceQuotes["description"] = "可选的逐字原文引用；traffic_id 必须是已绑定到该漏洞的真实流量 ID。只核对 proof/verification 的 HTTP 请求或响应正文，不代表漏洞已确认。"
 	return wrTool("update_finding_report",
-		"为已登记的漏洞写入/更新【详细报告】(Markdown 全文,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。报告建议包含:漏洞概述、影响与危害、复现步骤、证据/PoC、修复建议。",
+		findingReportToolDescription,
 		objSchema(map[string]any{
 			"finding_id":       map[string]any{"type": "integer", "description": "目标漏洞 id(report_finding 返回的 id)"},
 			"report":           strParam("详细报告全文,Markdown 格式"),
+			"delivery_report":  strParam("与详细报告同次撰写的开发交付报告全文，Markdown 格式；固定二级标题依次为：" + agent.DeliveryReportSectionOrder),
+			"cvss_vector":      strParam("AI 根据证据给出的完整 CVSS 4.0 Base 向量，按 AV/AC/AT/PR/UI/VC/VI/VA/SC/SI/SA 顺序"),
 			"evidence_version": map[string]any{"type": "integer", "description": "get_finding_traffic 返回的证据 version；用于防止报告覆盖新的证据变更"},
-		}, "finding_id", "report"),
+			"evidence_quotes":  evidenceQuotes,
+			"counterevidence":  map[string]any{"type": "string", "description": "可选：尝试过但未成立的路径、反例或与结论冲突的观察"},
+		}, "finding_id", "report", "delivery_report", "cvss_vector", "evidence_version"),
 		func(ctx context.Context, in json.RawMessage) (actool.Result, error) {
 			var a struct {
-				EvidenceVersion *int64          `json:"evidence_version"`
-				FindingID       json.RawMessage `json:"finding_id"`
-				Report          string          `json:"report"`
+				EvidenceVersion *int64                     `json:"evidence_version"`
+				FindingID       json.RawMessage            `json:"finding_id"`
+				Report          string                     `json:"report"`
+				DeliveryReport  string                     `json:"delivery_report"`
+				CVSSVector      string                     `json:"cvss_vector"`
+				EvidenceQuotes  *[]db.FindingEvidenceQuote `json:"evidence_quotes"`
+				Counterevidence *string                    `json:"counterevidence"`
 			}
-			_ = json.Unmarshal(in, &a)
+			if err := json.Unmarshal(in, &a); err != nil {
+				return actool.Errorf("报告参数不是有效 JSON：" + err.Error()), nil
+			}
+			if !agent.IsFindingTrafficBindingEnabled() {
+				a.EvidenceQuotes = nil
+			}
 			nodeID := parseProfileID(a.FindingID) // 复用「数字或数字字符串」解析
 			if nodeID <= 0 {
 				return actool.Errorf("finding_id 无效"), nil
 			}
-			n, err := s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)
+			var n int64
+			var err error
+			if a.DeliveryReport != "" || a.CVSSVector != "" {
+				if strings.TrimSpace(a.DeliveryReport) == "" || a.EvidenceVersion == nil {
+					return actool.Errorf("交付报告和 evidence_version 必填"), nil
+				}
+				vector, ok := normalizeCVSS4BaseVector(a.CVSSVector)
+				if !ok {
+					return actool.Errorf("CVSS 4.0 Base 向量无效"), nil
+				}
+				if err := validateDeliveryReportTemplate(a.DeliveryReport, vector); err != nil {
+					return actool.Errorf(err.Error()), nil
+				}
+				findingID, lookupErr := s.m.pg.FindingIDByNodeID(nodeID)
+				if lookupErr != nil {
+					return actool.Errorf(lookupErr.Error()), nil
+				}
+				deliveryReport, appendErr := s.appendDeliveryTrafficEvidence(ctx, findingID, *a.EvidenceVersion, a.DeliveryReport)
+				if appendErr != nil {
+					return actool.Errorf("附加完整 HTTP 流量证据失败：" + appendErr.Error()), nil
+				}
+				n, err = s.m.pg.SetFindingReportsByNodeID(ctx, nodeID, a.Report, deliveryReport, vector, *a.EvidenceVersion)
+			} else {
+				n, err = s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)
+			}
 			if err != nil {
 				return actool.Errorf(err.Error()), nil
 			}
 			if n == 0 {
 				return actool.Errorf(fmt.Sprintf("未找到 finding_id=%d 对应的漏洞记录(先用 report_finding 登记)", nodeID)), nil
+			}
+			if a.EvidenceQuotes != nil || a.Counterevidence != nil {
+				findingID, findErr := s.m.pg.FindingIDByNodeID(nodeID)
+				if findErr != nil {
+					return actool.Errorf(findErr.Error()), nil
+				}
+				if err := s.evidenceStore().UpdateFindingEvidence(ctx, findingID, a.EvidenceQuotes, a.Counterevidence); err != nil {
+					return actool.Errorf(err.Error()), nil
+				}
+			}
+			if a.DeliveryReport != "" {
+				return actool.Text(fmt.Sprintf("finding %d reports updated (detailed %d chars, delivery %d chars including original traffic)", nodeID, len(a.Report), len(a.DeliveryReport))), nil
 			}
 			return actool.Text(fmt.Sprintf("finding %d report updated (%d chars)", nodeID, len(a.Report))), nil
 		})
@@ -482,6 +536,7 @@ func (s *Server) seedOrchestrationTools() {
 		}
 		_ = s.m.PG().SeedTool(t.Name(), t.Description(), schema, bindings)
 	}
+	s.upgradeFindingReportToolSchema()
 	for _, t := range s.platformTools() {
 		schema, _ := json.Marshal(t.InputSchema())
 		_ = s.m.PG().SeedTool(t.Name(), t.Description(), schema, autoAgents)
@@ -495,13 +550,15 @@ func (s *Server) seedOrchestrationTools() {
 	s.seedWorkerReadbackRebind()  // 修复旧迁移误删：把 search_all_worker_traces/get_worker_trace/node_detail 补绑回 worker(一次性)
 	s.seedAutoReportFindingBinding()
 	s.unbindGoalMetDefault()
-	s.reseedGoalsPrompt()             // goals 提示词加入「抽操作约束」步 → 旧库追加一版新默认(一次性)
-	s.reseedMainAgentPrompt()         // mainagent 提示词加入「目标达成后 add_intent 反问是否建目标」(一次性)
-	s.reseedPlannerPrompt()           // planner 提示词:重写「0 意图」正当理由 + 加量化验收核对(一次性)
-	s.reseedWorkerPrompt()            // worker 提示词:加否定结论证据门槛(一次性)
-	s.seedReporterAgent()             // 预置「报告撰写」agent + 工具绑定 + finding 触发器(一次性)
-	s.upgradeReporterTriggerMessage() // 老库补迁移:让 reporter 回传 evidence_version(一次性)
-	s.seedFindingTrafficTools()       // 增加可选证据参数及只读证据工具，保留用户配置
+	s.reseedGoalsPrompt()               // goals 提示词加入「抽操作约束」步 → 旧库追加一版新默认(一次性)
+	s.reseedMainAgentPrompt()           // mainagent 提示词加入「目标达成后 add_intent 反问是否建目标」(一次性)
+	s.upgradeVerificationPrompts()      // 仅替换仍为旧默认值的提示词
+	s.seedReporterAgent()               // 预置「报告撰写」agent + 工具绑定 + finding 触发器(一次性)
+	s.upgradeReporterDefaultPrompt()    // 老库默认 prompt 增加交付报告，保留用户自定义版本
+	s.upgradeReporterDefaultPromptV3()  // 默认报告使用真人可读内容并自动附加原始报文
+	s.upgradeReporterDeliveryTemplate() // 默认交付报告升级为固定五节模板
+	s.upgradeReporterTriggerMessage()   // 老库触发消息要求一次写入两份报告(一次性)
+	s.seedFindingTrafficTools()         // 增加可选证据参数及只读证据工具，保留用户配置
 	s.seedFindingWorkflowTools()
 	// 注：pentest 的默认工具绑定无需迁移——BuiltinToolSeeds 在全新初始化时就把
 	// list_assets/insert_assets/report_finding/list_findings/list_companies 连同
@@ -544,6 +601,157 @@ func (s *Server) refreshBuiltinToolSchemas() {
 	}
 	_ = s.m.pg.SetSetting(flag, "true")
 	log.Printf("[tools] 已刷新 orchestration/platform 工具 schema 到代码默认(一次性)")
+}
+
+func (s *Server) upgradeFindingReportToolSchema() {
+	const flag = "reporter_report_tool_schema_delivery_v1"
+	if value, _, _ := s.m.pg.GetSetting(flag); value == "true" {
+		return
+	}
+	tool := s.toolUpdateFindingReport()
+	current, err := s.m.pg.GetTool(tool.Name())
+	if err != nil {
+		log.Printf("[reporter] 读取报告工具配置失败: %v", err)
+		return
+	}
+	if current == nil || !current.System {
+		return
+	}
+	description := current.Description
+	const oldDescription = "为已登记的漏洞写入/更新【详细报告】(Markdown 全文,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。报告建议包含:漏洞概述、影响与危害、复现步骤、证据/PoC、修复建议。"
+	if description == oldDescription {
+		description = tool.Description()
+	}
+	schema, err := json.Marshal(tool.InputSchema())
+	if err != nil {
+		log.Printf("[reporter] 编码报告工具 schema 失败: %v", err)
+		return
+	}
+	if err := s.m.pg.RefreshToolDefaults(tool.Name(), description, schema); err != nil {
+		log.Printf("[reporter] 刷新报告工具 schema 失败: %v", err)
+		return
+	}
+	if err := s.m.pg.SetSetting(flag, "true"); err != nil {
+		log.Printf("[reporter] 保存报告工具 schema 迁移标记失败: %v", err)
+		return
+	}
+	log.Printf("[reporter] 已更新报告工具参数 schema")
+}
+
+func (s *Server) upgradeReporterDefaultPrompt() {
+	const flag = "reporter_prompt_delivery_report_v1"
+	if value, _, _ := s.m.pg.GetSetting(flag); value == "true" {
+		return
+	}
+	agentRow, err := s.m.pg.GetAgentByKey("reporter")
+	if err != nil {
+		log.Printf("[reporter] 读取 agent 失败: %v", err)
+		return
+	}
+	if agentRow == nil {
+		return
+	}
+	current, err := s.m.pg.CurrentPrompt(agentRow.ID)
+	if err != nil {
+		log.Printf("[reporter] 读取 prompt 失败: %v", err)
+		return
+	}
+	const legacyDefaultHash = "8ba98208f6c5f2ccb103c88ef13239c4264733400c0e3dfec96d3a3572d78d39"
+	if fmt.Sprintf("%x", sha256.Sum256([]byte(current))) == legacyDefaultHash {
+		if _, err := s.m.pg.ResetPromptToDefault(agentRow.ID, agent.ReporterDefaultPrompt); err != nil {
+			log.Printf("[reporter] 升级默认 prompt 失败: %v", err)
+			return
+		}
+		log.Printf("[reporter] 默认 prompt 已升级为同时撰写详细报告和交付报告")
+	}
+	if err := s.m.pg.SetSetting(flag, "true"); err != nil {
+		log.Printf("[reporter] 保存默认 prompt 迁移标记失败: %v", err)
+	}
+}
+
+func (s *Server) upgradeReporterDefaultPromptV3() {
+	const flag = "reporter_prompt_delivery_report_v3"
+	if value, _, _ := s.m.pg.GetSetting(flag); value == "true" {
+		return
+	}
+	agentRow, err := s.m.pg.GetAgentByKey("reporter")
+	if err != nil {
+		log.Printf("[reporter] 读取 agent 失败: %v", err)
+		return
+	}
+	if agentRow == nil {
+		return
+	}
+	current, err := s.m.pg.CurrentPrompt(agentRow.ID)
+	if err != nil {
+		log.Printf("[reporter] 读取 prompt 失败: %v", err)
+		return
+	}
+	currentHash := fmt.Sprintf("%x", sha256.Sum256([]byte(current)))
+	const previousDefaultHash = "4c0afdd38b38d7fece3ee18e644a0e829b113a00a86bbb798be47457e6489949"
+	const previousWorktreeDefaultHash = "5525dc3abf6563ccb4d07c6f8d40b9f417901ed61370c1175bacffb0e220c56a"
+	if currentHash == previousDefaultHash || currentHash == previousWorktreeDefaultHash {
+		if _, err := s.m.pg.ResetPromptToDefault(agentRow.ID, agent.ReporterDefaultPrompt); err != nil {
+			log.Printf("[reporter] 升级默认 prompt 失败: %v", err)
+			return
+		}
+		log.Printf("[reporter] 默认 prompt 已升级为由 ARTEX 附加授权测试原始报文的交付报告规范")
+	}
+	if err := s.m.pg.SetSetting(flag, "true"); err != nil {
+		log.Printf("[reporter] 保存默认 prompt 迁移标记失败: %v", err)
+	}
+}
+
+func reporterPromptNeedsTemplateUpgrade(prompt string) bool {
+	switch fmt.Sprintf("%x", sha256.Sum256([]byte(prompt))) {
+	case "b1ab0800d8137a0476f02d6e2b7e5380133b62f060096ad52dc412769af152c9", // 旧版默认交付规范
+		"8b3000d01b7f8bdee0a4b1f4fcee3beb8350744d10144c5c2669090acffd83ed": // 补回攻击链章节的默认值
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) upgradeReporterDeliveryTemplate() {
+	const flag = "reporter_prompt_delivery_template_v1"
+	value, _, err := s.m.pg.GetSetting(flag)
+	if err != nil {
+		log.Printf("[reporter] 读取固定模板迁移标记失败: %v", err)
+		return
+	}
+	if value == "true" {
+		return
+	}
+	// Only refresh the known stock description; edited schema and bindings stay
+	// authoritative, while runtime guidance still explains the save contract.
+	if _, err := s.m.pg.Exec(`UPDATE tools SET description=$1,updated_at=now()
+WHERE key='update_finding_report' AND system AND description=$2`, findingReportToolDescription, previousFindingReportToolDescription); err != nil {
+		log.Printf("[reporter] 更新固定模板工具说明失败: %v", err)
+		return
+	}
+	agentRow, err := s.m.pg.GetAgentByKey("reporter")
+	if err != nil {
+		log.Printf("[reporter] 读取 agent 失败: %v", err)
+		return
+	}
+	if agentRow == nil {
+		return
+	}
+	current, err := s.m.pg.CurrentPrompt(agentRow.ID)
+	if err != nil {
+		log.Printf("[reporter] 读取 prompt 失败: %v", err)
+		return
+	}
+	if reporterPromptNeedsTemplateUpgrade(current) {
+		if _, err := s.m.pg.ResetPromptToDefault(agentRow.ID, agent.ReporterDefaultPrompt); err != nil {
+			log.Printf("[reporter] 升级固定交付模板失败: %v", err)
+			return
+		}
+		log.Printf("[reporter] 默认 prompt 已升级为固定五节交付模板")
+	}
+	if err := s.m.pg.SetSetting(flag, "true"); err != nil {
+		log.Printf("[reporter] 保存固定模板 prompt 迁移标记失败: %v", err)
+	}
 }
 
 // unbindGoalMetDefault removes goal_met's default "planner" binding ONCE (guarded by
@@ -623,65 +831,22 @@ func (s *Server) reseedMainAgentPrompt() {
 	log.Printf("[prompts] mainagent 提示词已追加新默认版本(加入目标达成后反问建目标,一次性)")
 }
 
-// reseedPlannerPrompt 把 planner 提示词刷成【当前代码默认】——默认正文做了精简重构,并把「克制」降级为
-// 仅去重、新增「深度优先于覆盖度」「硬底线:目标未达成且无在跑意图必须产出」、给否定结论复核加上界。
-// 每次默认有实质变更就 bump 下面的 flag(当前 v2)让存量旧库再刷一次。SeedPromptIfEmpty 首插入only,旧库已有版本收不到,故用版本管理
-// 【追加一个新版本】并切过去(ResetPromptToDefault),旧版本仍保留在历史里,用户若自定义过可从版本记录
-// 找回。settings flag 守卫 → 只做一次。全新库无需处理(SeedPromptIfEmpty 已 seed 最新默认)。与
-// reseedGoalsPrompt 完全同构。
-func (s *Server) reseedPlannerPrompt() {
-	const flag = "planner_prompt_compact_realistic_v2"
-	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
-		return
+// upgradeVerificationPrompts leaves edited prompts and their history untouched.
+func (s *Server) upgradeVerificationPrompts() {
+	defaults := agent.BuiltinPromptSeeds()
+	for key, previous := range agent.PreviousVerificationPromptSeeds() {
+		a, err := s.m.pg.GetAgentByKey(key)
+		if err != nil || a == nil {
+			log.Printf("[prompts] %s 复核提示词升级跳过: %v", key, err)
+			continue
+		}
+		updated, err := s.m.pg.UpgradePromptIfCurrent(a.ID, previous, defaults[key])
+		if err != nil {
+			log.Printf("[prompts] %s 复核提示词升级失败: %v", key, err)
+		} else if updated {
+			log.Printf("[prompts] %s 复核提示词已升级", key)
+		}
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
-	a, err := s.m.pg.GetAgentByKey("planner")
-	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
-	}
-	tmpl := agent.BuiltinPromptSeeds()["planner"]
-	if tmpl == "" {
-		return
-	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
-	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
-		return
-	}
-	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] planner 提示词重刷为新默认失败: %v", err)
-		return
-	}
-	log.Printf("[prompts] planner 提示词已追加新默认版本(精简重构+克制降级去重+深度优先+否定复核上界,一次性)")
-}
-
-// reseedWorkerPrompt 把 worker 提示词刷成【当前代码默认】——默认正文 record_fact 段删掉了「否定类结论
-// 写观察+试探性读法」整句、并把 confidence(observed/inferred)与「是否穷尽本意图手段」解耦(这些易误导规划者),
-// 同时把 facts 数组分条收紧为「彼此完全独立、无法归并」的极少数例外。bump flag 至 v3 让存量旧库再刷一次。
-// SeedPromptIfEmpty 首插入only,旧库已有版本收不到,故用版本管理【追加一个新版本】并切过去,旧版本仍保留在历史里可找回。
-// settings flag 守卫 → 只做一次。全新库无需处理。与 reseedGoalsPrompt 完全同构。
-func (s *Server) reseedWorkerPrompt() {
-	const flag = "worker_prompt_compact_v4"
-	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
-		return
-	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
-	a, err := s.m.pg.GetAgentByKey("worker")
-	if err != nil || a == nil {
-		return // 全新库尚未建 agent 行时,seedPrompts 会直接 seed 最新默认,无需此迁移
-	}
-	tmpl := agent.BuiltinPromptSeeds()["worker"]
-	if tmpl == "" {
-		return
-	}
-	// 全新库 seedPrompts 已 seed 最新默认 → 当前版本已等于代码默认,不必再追加重复版本。
-	if cur, err := s.m.pg.CurrentPrompt(a.ID); err == nil && cur == tmpl {
-		return
-	}
-	if _, err := s.m.pg.ResetPromptToDefault(a.ID, tmpl); err != nil {
-		log.Printf("[prompts] worker 提示词重刷为新默认失败: %v", err)
-		return
-	}
-	log.Printf("[prompts] worker 提示词已追加新默认版本(查上下文段收敛为 list_assets/list_findings,去掉 list_facts/node_detail/asset_neighbors,一次性)")
 }
 
 // reporterToolCallMessage 必须无条件要求先读一次 get_finding_traffic 再写报告。
@@ -689,11 +854,49 @@ func (s *Server) reseedWorkerPrompt() {
 // 写成「启用自动绑定才读」,默认关闭配置下 reporter 就不会传 evidence_version,
 // SetFindingReportVersionByNodeID 便按 legacy 语义写 -1,漏洞详情与 Markdown 导出
 // 从此常驻「证据已变更，报告待更新」,而 UI 上没有任何入口能把它清掉。
-const reporterToolCallMessage = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
+const reporterToolCallMessageV2 = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
 	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
 	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
 	"最后调用 update_finding_report(finding_id=finding_node_id, report, evidence_version=实际读取版本) 保存，" +
 	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+
+const reporterToolCallMessageV3 = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
+	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
+	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
+	"基于同一组证据一次写出详细报告和面向开发修复的交付报告，并给出完整 CVSS 4.0 Base 向量；交付报告修复建议只写证据支持的必要改动，不估算无依据的工期或成本。" +
+	"交付报告按漏洞名称、CVSS 4.0 Base 向量/评分/等级、漏洞描述、修复建议、测试过程、攻击过程和证据来源组织。CVSS 三行须使用固定格式：- **CVSS 4.0 Base 向量（CVSS-B）**：...；- **CVSS 4.0 评分**：...；- **漏洞等级**：...。" +
+	"不要在正文复制已绑定的 HTTP 报文；ARTEX 会在保存报告时附加完整原始请求和响应。任务证据或执行记录中若有未绑定的原始报文，可按原文引用并注明来源，不做脱敏，不得编造。" +
+	"最后调用 update_finding_report(finding_id=finding_node_id, report, delivery_report, cvss_vector, evidence_version=实际读取版本) 一次保存两份报告；" +
+	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+
+const reporterToolCallMessageV4 = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
+	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
+	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
+	"基于同一组证据一次写出详细报告和面向开发修复的交付报告，并给出完整 CVSS 4.0 Base 向量；交付报告修复建议只写证据支持的必要改动，不估算无依据的工期或成本。" +
+	"交付报告必须单独使用 Markdown 二级标题“攻击链路”，按实际发生顺序说明利用前提、每一步请求或操作、系统响应和最终已证实影响，并对应证据；缺失或未验证的步骤明确标出，不使用箭头缩写，不把推测写成事实。" +
+	"交付报告按漏洞名称、CVSS 4.0 Base 向量/评分/等级、漏洞描述、修复建议、测试过程、攻击链路、发现路径和证据来源组织。CVSS 三行须使用固定格式：- **CVSS 4.0 Base 向量（CVSS-B）**：...；- **CVSS 4.0 评分**：...；- **漏洞等级**：...。" +
+	"不要在正文复制已绑定的 HTTP 报文；ARTEX 会在保存报告时附加完整原始请求和响应。任务证据或执行记录中若有未绑定的原始报文，可按原文引用并注明来源，不做脱敏，不得编造。" +
+	"最后调用 update_finding_report(finding_id=finding_node_id, report, delivery_report, cvss_vector, evidence_version=实际读取版本) 一次保存两份报告；" +
+	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+
+const reporterToolCallMessageV2Legacy = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
+	"先用 get_finding_traffic(finding_id) 读取当前证据清单及其 version（空清单是正常情况，照常写报告）；" +
+	"若运行指引启用自动绑定，在读取前先核实并关联本次漏洞的流量。节点详情使用 finding_node_id。" +
+	"基于同一组证据一次写出详细报告和面向开发修复的交付报告，并给出完整 CVSS 4.0 Base 向量；交付报告修复建议只写证据支持的必要改动，不估算无依据的工期或成本。" +
+	"交付报告按漏洞名称、CVSS 4.0 Base 向量/评分/等级、漏洞描述、修复建议、测试过程、攻击链路、发现路径、Burp 复测请求和返回包组织。CVSS 三行须使用固定格式：- **CVSS 4.0 Base 向量（CVSS-B）**：...；- **CVSS 4.0 评分**：...；- **漏洞等级**：...。" +
+	"只在已绑定真实 HTTP 流量时填写 Burp 请求/响应，保留证据原文，不编造报文。" +
+	"最后调用 update_finding_report(finding_id=finding_node_id, report, delivery_report, cvss_vector, evidence_version=实际读取版本) 一次保存两份报告；" +
+	"evidence_version 必须传，否则报告会被永久标记为待更新。不要混用两种编号。"
+
+const reporterToolCallMessageV5 = "上面刚有一个漏洞被 report_finding 登记。请读取返回 JSON 的 finding_id（独立漏洞记录 ID）与 finding_node_id（探索节点 ID），" +
+	"用 get_task_node_detail 和执行记录取全本次漏洞的发现线索、攻击思路、测试项、工具参数、判据、时间、失败尝试及未验证项；" +
+	"先按运行指引核实并关联已有流量，再用 get_finding_traffic(finding_id) 读取当前证据清单及 version（空清单可正常写报告，不猜测流量编号）。" +
+	"基于同组证据一次写出详细报告和面向开发修复的交付报告。" + agent.DeliveryReportSaveGuidance +
+	"攻击链路用简短树形逐步写出身份条件、操作、响应和影响，并对应测试记录；提供可在 Burp Repeater 复现的完整请求及会话、发送方式和判据，未实际在 Burp 验证要说明。" +
+	"ARTEX 会在证据说明内成对附加绑定报文；未绑定原始包按真实来源引用，不虚构、不把其他账号记录贴作本次证据。" +
+	"最后调用 update_finding_report(finding_id=finding_node_id, report, delivery_report, cvss_vector, evidence_version=实际读取版本) 一次保存两份报告；格式不符合工具反馈时补齐后重试。"
+
+const reporterToolCallMessage = reporterToolCallMessageV5
 
 // 旧版触发消息(0.3.8 及更早)。只有仍与它逐字相同的记录才会被迁移覆盖，用户改过的保持原样。
 const reporterToolCallMessageV1 = "上面刚有一个漏洞被 report_finding 登记。请从触发上下文里取出 finding_id" +
@@ -705,18 +908,22 @@ const reporterToolCallMessageV1 = "上面刚有一个漏洞被 report_finding �
 // 升级上来的库拿不到新文案 —— 工具 schema 由 seedFindingTrafficTools 补齐了
 // evidence_version，但没有任何东西告诉 reporter 去用它。一次性，且只覆盖未被改动的文案。
 func (s *Server) upgradeReporterTriggerMessage() {
-	const flag = "reporter_trigger_evidence_version_v1"
+	const flag = "reporter_trigger_delivery_report_v5"
 	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
 		return
 	}
-	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 只尝试一次
 	triggers, err := s.m.pg.ListTriggersFor("reporter")
 	if err != nil {
 		log.Printf("[reporter] 读取触发器失败: %v", err)
 		return
 	}
 	for _, t := range triggers {
-		if !t.OnToolCall || t.ToolCallMessage != reporterToolCallMessageV1 {
+		if !t.OnToolCall || (t.ToolCallMessage != reporterToolCallMessageV1 &&
+			t.ToolCallMessage != reporterToolCallMessageV2 &&
+			t.ToolCallMessage != reporterToolCallMessageV2Legacy &&
+			t.ToolCallMessage != reporterToolCallMessageV3 &&
+			t.ToolCallMessage != reporterToolCallMessageV4 &&
+			t.ToolCallMessage != reporterToolCallMessageV5) {
 			continue // 用户改过或不是 finding 触发器，不动。
 		}
 		t.ToolCallMessage = reporterToolCallMessage
@@ -724,13 +931,16 @@ func (s *Server) upgradeReporterTriggerMessage() {
 			log.Printf("[reporter] 升级触发消息失败: %v", err)
 			return
 		}
-		log.Printf("[reporter] 触发消息已升级为读取并回传 evidence_version")
+		log.Printf("[reporter] 触发消息已升级为固定交付模板与 Burp 复现规范")
+	}
+	if err := s.m.pg.SetSetting(flag, "true"); err != nil {
+		log.Printf("[reporter] 保存触发消息迁移标记失败: %v", err)
 	}
 }
 
 // seedReporterAgent 预置一个「报告撰写」自定义 agent(builtin=false，可在 UI 编辑/删除)：
 // 绑定 update_finding_report + 任务查询工具，并挂一个「report_finding 被调用即触发」的
-// 触发器 —— 每登记一个漏洞就唤起它写详细报告。一次性(settings flag 守卫)：用户删掉后不再重建。
+// 触发器 —— 每登记一个漏洞就唤起它写详细报告和交付报告。一次性(settings flag 守卫)：用户删掉后不再重建。
 // 依赖：orchestration 工具已在本函数上方 SeedTool 入库，故绑定得上。
 func (s *Server) seedReporterAgent() {
 	const flag = "reporter_agent_seed_v1"
@@ -743,7 +953,7 @@ func (s *Server) seedReporterAgent() {
 		return // key 已被占用(用户手建过)——不覆盖
 	}
 	a, err := s.m.pg.CreateAgent("reporter", "报告撰写",
-		"漏洞详细报告撰写：发现漏洞时自动触发，查取证据与执行过程后写 Markdown 报告并回写。")
+		"漏洞报告撰写：发现漏洞时自动触发，查取证据与执行过程后一次生成详细报告和开发交付报告。")
 	if err != nil {
 		log.Printf("[reporter] 创建 agent 失败: %v", err)
 		return

@@ -84,6 +84,9 @@ WHERE relation.source_task_id=$1 LIMIT 1`, taskID).Scan(&dependent)
 	if _, err := tx.Exec(`DELETE FROM findings WHERE task_id=$1`, taskID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM finding_delivery_reports WHERE task_id=$1`, taskID); err != nil {
+		return err
+	}
 	for _, statement := range []struct {
 		query string
 		args  []any
@@ -272,6 +275,9 @@ WHERE archive.id=$1 FOR UPDATE OF archive,task`, archiveID).Scan(&taskID, &expID
 			return nil, fmt.Errorf("restore %s: %w", table, err)
 		}
 	}
+	if err := insertArchiveRows(tx, "finding_delivery_reports", remappedTables["finding_delivery_reports"]); err != nil {
+		return nil, fmt.Errorf("restore finding_delivery_reports: %w", err)
+	}
 	if err := restoreFindingTrafficTx(tx, snapshot); err != nil {
 		return nil, fmt.Errorf("restore finding traffic: %w", err)
 	}
@@ -387,7 +393,8 @@ func insertArchiveRows(tx *sql.Tx, table string, raw json.RawMessage) error {
 	allowed := map[string]bool{
 		"exploration_nodes": true, "exploration_edges": true, "exploration_anchors": true,
 		"task_constraints": true, "activity": true, "task_asset_links": true, "findings": true,
-		"llm_records": true, "llm_usage": true, "skill_usage": true, "tool_usage": true,
+		"finding_delivery_reports": true,
+		"llm_records":              true, "llm_usage": true, "skill_usage": true, "tool_usage": true,
 		"side_question_sessions": true, "side_question_requests": true,
 	}
 	if !allowed[table] {

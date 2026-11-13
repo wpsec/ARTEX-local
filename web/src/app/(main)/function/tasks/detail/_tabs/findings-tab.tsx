@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { api } from "@/lib/api";
@@ -111,18 +112,18 @@ function Row({
           {new Date(f.ts).toLocaleString("zh-CN")}
         </span>
         {f.finding_id && (
-          <Link
-            href={
-              f.inherited
-                ? `/function/findings/detail?id=${f.finding_id}&context_task=${contextTaskId}`
-                : `/function/findings/detail?id=${f.finding_id}`
-            }
-            className="text-muted-foreground hover:text-primary inline-flex shrink-0 items-center gap-0.5 text-xs"
-            title="查看漏洞详情"
-          >
-            详情
-            <ArrowUpRightIcon className="size-3" />
-          </Link>
+          <Button asChild size="sm" variant="outline" className="h-8 shrink-0 px-3">
+            <Link
+              href={
+                `/function/findings/detail?id=${encodeURIComponent(f.finding_id)}` +
+                `&context_task=${encodeURIComponent(contextTaskId)}`
+              }
+              title="查看漏洞详情"
+            >
+              详情
+              <ArrowUpRightIcon data-icon="inline-end" />
+            </Link>
+          </Button>
         )}
       </div>
       {open && (
@@ -180,7 +181,7 @@ export function FindingsTab({ taskId }: { taskId: string }) {
   }, []);
 
   const items = findings
-    .filter((f) => f.task_id === taskId || f.inherited)
+    .filter((f) => f.task_id === taskId)
     .sort((a, b) => {
       const compared = Date.parse(a.ts) - Date.parse(b.ts);
       if (compared !== 0) return sortPreference.direction === "asc" ? compared : -compared;
@@ -215,7 +216,7 @@ export function FindingsTab({ taskId }: { taskId: string }) {
           <Row key={f.id} f={f} contextTaskId={taskId} onStatus={onStatus} />
         ))}
         {items.length === 0 && (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">本任务及直接关联任务暂无确认发现。</p>
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">本任务暂无确认发现。</p>
         )}
       </CardContent>
     </Card>

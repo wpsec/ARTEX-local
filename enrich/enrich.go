@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/db"
 
 	"github.com/miekg/dns"
 	"github.com/projectdiscovery/dnsx/libs/dnsx"
@@ -47,6 +47,7 @@ type Engine struct {
 	jobs   chan job
 	cool   sync.Map // dedup/cooldown: "kind:id" -> time.Time (last run)
 	once   sync.Once
+	wg     sync.WaitGroup
 	closed chan struct{}
 }
 
@@ -82,7 +83,11 @@ func New(as *db.AssetStore, proxy func() string, workers int) *Engine {
 		closed: make(chan struct{}),
 	}
 	for i := 0; i < workers; i++ {
-		go e.worker()
+		e.wg.Add(1)
+		go func() {
+			defer e.wg.Done()
+			e.worker()
+		}()
 	}
 	return e
 }
@@ -140,6 +145,7 @@ func (e *Engine) Close() {
 		return
 	}
 	e.once.Do(func() { close(e.closed) })
+	e.wg.Wait()
 }
 
 func (e *Engine) worker() {
@@ -147,7 +153,17 @@ func (e *Engine) worker() {
 		select {
 		case <-e.closed:
 			return
+		default:
+		}
+		select {
+		case <-e.closed:
+			return
 		case j := <-e.jobs:
+			select {
+			case <-e.closed:
+				return
+			default:
+			}
 			if e.onCooldown(j) {
 				continue
 			}

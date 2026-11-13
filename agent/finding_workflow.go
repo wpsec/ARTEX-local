@@ -3,9 +3,10 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/Autumn-27/artex/db"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 const findingIDGuidance = "\n\n**漏洞编号约定**：finding_id 是独立漏洞记录 ID；finding_node_id 是探索节点 ID。list_findings / list_task_findings / node_detail / get_task_node_detail 的 id 保留为探索节点 ID，应从同一返回的 finding_id 读取独立编号。get_finding_traffic / bind_finding_traffic 用独立 finding_id。旧 update_finding_report 的 finding_id 参数仍传 finding_node_id。不要把 report_finding 第一行的数字用于证据工具，也不要遇到编号错误后猜测其他数字。"
@@ -19,10 +20,20 @@ func findingTrafficBindingEnabled() bool {
 	return FindingTrafficBindingEnabled != nil && FindingTrafficBindingEnabled()
 }
 
+func IsFindingTrafficBindingEnabled() bool {
+	return findingTrafficBindingEnabled()
+}
+
 // Applied after ToolResolve: user descriptions and prompts remain intact, while
 // all actual reporters (including Planner and custom chat agents) see the same
 // API contract. Disabled/unbound tools are never reintroduced here.
 func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.CoreTool, string) {
+	tools = append([]actool.CoreTool(nil), tools...)
+	for i, tool := range tools {
+		if tool.Name() == "update_finding_report" && !strings.Contains(tool.Description(), DeliveryReportSaveGuidance) {
+			tools[i] = DecorateTool(tool, tool.Description()+"\n"+DeliveryReportSaveGuidance, tool.InputSchema())
+		}
+	}
 	if !findingTrafficBindingEnabled() {
 		out := make([]actool.CoreTool, 0, len(tools))
 		for _, tool := range tools {
@@ -33,7 +44,7 @@ func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.Co
 				continue
 			}
 			switch tool.Name() {
-			case "report_finding", "add_hint", "add_task_hint":
+			case "report_finding", "add_hint", "add_task_hint", "update_finding_report":
 				// Work on a copy: toggling back on must restore the original schema.
 				raw, _ := json.Marshal(tool.InputSchema())
 				var schema map[string]any
@@ -86,10 +97,11 @@ func stripTrafficParameters(schema map[string]any) {
 	props, _ := schema["properties"].(map[string]any)
 	delete(props, "traffic_refs")
 	delete(props, "evidence_hint_id")
+	delete(props, "evidence_quotes")
 	if required, ok := schema["required"].([]any); ok {
 		kept := required[:0]
 		for _, key := range required {
-			if key != "traffic_refs" && key != "evidence_hint_id" {
+			if key != "traffic_refs" && key != "evidence_hint_id" && key != "evidence_quotes" {
 				kept = append(kept, key)
 			}
 		}
@@ -105,6 +117,18 @@ func stripTrafficParameters(schema map[string]any) {
 // HintTrafficSchema is shared by the task-local and cross-task hint tools.
 func HintTrafficSchema() map[string]any {
 	return map[string]any{"type": "array", "description": "可选：已核实且对应本提示中具体漏洞的流量引用，保留顺序；交接后 report_finding 可传 evidence_hint_id 携带这些引用。", "items": obj(map[string]any{"traffic_id": str("真实流量 ID"), "role": str("baseline / proof / verification / supporting"), "note": str("该流量支持什么结论")}, "traffic_id")}
+}
+
+func EvidenceQuotesSchema() map[string]any {
+	return map[string]any{
+		"type": "array", "maxItems": 16,
+		"description": "可选的逐字原文引用；traffic_id 必须对应本次 traffic_refs 或 evidence_hint_id 携带的真实流量。只核对 proof/verification 的 HTTP 请求或响应正文，不代表漏洞已确认。",
+		"items": obj(map[string]any{
+			"traffic_id": str("本次绑定的真实流量 ID"),
+			"side":       map[string]any{"type": "string", "enum": []string{"request", "response"}},
+			"quote":      map[string]any{"type": "string", "minLength": 8, "maxLength": 2048},
+		}, "traffic_id", "side", "quote"),
+	}
 }
 
 func (t *ToolSet) findingRefsFromHint(hintID int64, explicit []db.TrafficRef) ([]db.TrafficRef, error) {

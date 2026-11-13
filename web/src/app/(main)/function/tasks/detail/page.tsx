@@ -206,10 +206,13 @@ function TaskDetailInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
+  const requestedTab = searchParams.get("tab");
   const [task, setTask] = React.useState<Task | null>(null);
   const [paused, setPaused] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
-  const [tab, setTab] = React.useState("sessions");
+  const [tab, setTab] = React.useState(() =>
+    requestedTab && TABS.some((candidate) => candidate.value === requestedTab) ? requestedTab : "sessions",
+  );
   const [interceptPendingCount, setInterceptPendingCount] = React.useState(0);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [archiving, setArchiving] = React.useState(false);
@@ -220,6 +223,12 @@ function TaskDetailInner() {
       .then(setProfiles)
       .catch(() => setProfiles([]));
   }, []);
+
+  React.useEffect(() => {
+    if (requestedTab && TABS.some((candidate) => candidate.value === requestedTab)) {
+      setTab(requestedTab);
+    }
+  }, [requestedTab]);
 
   React.useEffect(() => {
     let alive = true;

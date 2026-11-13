@@ -359,6 +359,14 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Preserve the old fail-open behavior only for installations that had already
+-- enabled Judge before the default changed. New or previously disabled instances
+-- receive the safer ask default from the application.
+INSERT INTO settings(key, value)
+SELECT 'llm_judge_fail_action', 'allow'
+WHERE EXISTS (SELECT 1 FROM settings WHERE key='llm_judge_enabled' AND value='true')
+ON CONFLICT (key) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS llm_profiles (
     id               BIGSERIAL PRIMARY KEY,
     name             TEXT NOT NULL UNIQUE,
@@ -1098,11 +1106,20 @@ CREATE TABLE IF NOT EXISTS findings (
     status      TEXT NOT NULL DEFAULT 'pending',
     -- 漏洞详细报告(Markdown)；默认空,仅详情页读取/展示,不进列表接口以免 payload 膨胀。
     report      TEXT NOT NULL DEFAULT '',
+    -- 引用匹配结果只描述证据是否可定位，不代表漏洞已确认。
+    evidence_check_status TEXT NOT NULL DEFAULT 'not_assessed',
+    evidence_check_note TEXT NOT NULL DEFAULT '',
+    evidence_quotes JSONB NOT NULL DEFAULT '[]',
+    counterevidence TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS name   TEXT NOT NULL DEFAULT '';
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS report TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_check_status TEXT NOT NULL DEFAULT 'not_assessed';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_check_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_quotes JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS counterevidence TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_findings_task ON findings(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_findings_time ON findings(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status, created_at DESC);
@@ -1143,6 +1160,18 @@ CREATE TRIGGER trg_conversation_retest_delete BEFORE DELETE ON conversations
 
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS evidence_version BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS report_evidence_version BIGINT NOT NULL DEFAULT 0;
+
+-- 一份任务交付报告对应一个任务上下文和一个漏洞；继承漏洞在各任务中独立留档。
+CREATE TABLE IF NOT EXISTS finding_delivery_reports (
+    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    finding_id BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    cvss_vector TEXT NOT NULL,
+    evidence_version BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(task_id, finding_id)
+);
 
 CREATE TABLE IF NOT EXISTS traffic_evidence_snapshots (
     id TEXT PRIMARY KEY,

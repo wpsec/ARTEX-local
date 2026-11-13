@@ -66,3 +66,17 @@ func TestFindingWorkflowSharedAssemblyAndSwitch(t *testing.T) {
 		t.Fatal("reintroduced disabled tool or its guidance")
 	}
 }
+
+func TestReportTemplateContractReachesCustomToolsWithBindingDisabled(t *testing.T) {
+	old := FindingTrafficBindingEnabled
+	FindingTrafficBindingEnabled = func() bool { return false }
+	t.Cleanup(func() { FindingTrafficBindingEnabled = old })
+	tool := actool.Build(actool.Spec{Name: "update_finding_report", Description: "USER CUSTOM DESCRIPTION", Schema: map[string]any{"type": "object"}})
+	tools, _ := findingWorkflowTools("custom-agent", []actool.CoreTool{tool})
+	if len(tools) != 1 || !strings.HasPrefix(tools[0].Description(), tool.Description()) || !strings.Contains(tools[0].Description(), DeliveryReportSectionOrder) {
+		t.Fatal("report save contract was lost with custom descriptions or disabled binding")
+	}
+	if tool.Description() != "USER CUSTOM DESCRIPTION" {
+		t.Fatal("runtime decoration modified the original tool")
+	}
+}

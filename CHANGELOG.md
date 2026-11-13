@@ -4,7 +4,41 @@
 
 ## [Unreleased]
 
-## [0.3.15] - 2026-10-07
+### 调整
+
+- 增强独立渗透 Agent 与任务 planner/worker 的候选漏洞复核和证据交接；旧默认提示词按内容匹配升级，自定义提示词保留。
+- 交付报告固定为“描述、修复、测试过程、攻击链路、证据说明”五节，补齐发现思路、定级依据、工具参数、判据、时间、失败尝试、Burp 复现和复测标准；统一 Reporter 与兼容草稿接口的写作规则。
+
+### 修复
+
+- 保存交付报告前校验固定章节及必需子节，缺章、空内容和 CVSS 向量不一致时反馈给报告 Agent 修正；按已知默认值升级提示词、触发语和工具说明，保留自定义内容。
+- 将已绑定 HTTP 请求和响应逐条成对展示，编号、来源、时间和用途移到报文代码块外；避免复制到 Burp 时混入标签或多条请求，并保留报文完整性检查。
+- 支持交付报告新的单行 CVSS 4.0 头，按本地算法展示评分和等级，兼容旧三行格式并保留证据正文。
+- 修复报告 Agent 生成期间容器重启会丢失内存队列、导致已登记漏洞一直没有报告的问题；启动后自动重试已有报告 Agent 会话且两份报告均未保存的漏洞。
+- 降低旁路上下文摘要的单次输入分块上限，避免大快照让摘要输出触及 token 上限并导致旁路问答连续失败；输出为空、截断或意外返回工具调用时提供对应错误。
+
+## [0.3.16] - 2026-11-12
+
+### 版本说明
+
+- 版本线从原生 ARTEX `0.3.15` 接续。`2.3.0` 是此前增加版本化构建时写入的独立版本号，未说明与原生版本线的关系；本项目现按原生末版递增为 `0.3.16`。
+
+### 新增
+
+- 支持在 MCP 凭据字段中引用 ARTEX 进程环境变量，并默认集成 OWASP ZAP MCP。
+- 内置版本号文件 `VERSION`；本地 Docker 镜像使用版本标签，Release 镜像同时发布语义版本标签和 `latest`。
+
+### 调整
+
+- 默认 Skill 集收敛至 Web、API、代码审查、内网测试和必要的工具流程。
+- 移除 BloodHound 默认部署与初始化；继续支持用户通过通用 MCP 配置接入外部服务。
+- 更新登录页使用须知，说明授权范围、默认部署访问面及外部 LLM/MCP 数据流。
+
+### 修复
+
+- 修复任务发现列表中的关联任务显示和详情返回路径。
+
+## 0.3.15 - 2026-10-07
 
 ### 拦截
 
@@ -103,7 +137,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.14] - 2026-09-24
+## 0.3.14 - 2026-09-24
 
 ### 任务列表
 
@@ -129,7 +163,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.13] - 2026-09-19
+## 0.3.13 - 2026-09-19
 
 ### 资产拦截
 
@@ -169,7 +203,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.12] - 2026-09-17
+## 0.3.12 - 2026-09-17
 
 ### 探索链路播报板
 
@@ -240,7 +274,7 @@
 - [@RuoJi6](https://github.com/RuoJi6)
 - [@dingpotian](https://github.com/dingpotian)
 
-## [0.3.11] - 2026-09-15
+## 0.3.11 - 2026-09-15
 
 ### 操作审查
 
@@ -295,7 +329,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@RuoJi6](https://github.com/RuoJi6)
 
-## [0.3.10] - 2026-09-13
+## 0.3.10 - 2026-09-13
 
 ### 网络
 
@@ -334,7 +368,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.9] - 2026-09-11
+## 0.3.9 - 2026-09-11
 
 ### Agent
 
@@ -431,7 +465,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@RuoJi6](https://github.com/RuoJi6)
 
-## [0.3.8] - 2026-09-09
+## 0.3.8 - 2026-09-09
 
 ### LLM
 
@@ -503,7 +537,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.7] - 2026-08-31
+## 0.3.7 - 2026-08-31
 
 ### LLM
 
@@ -567,7 +601,7 @@
 - [@neouks](https://github.com/neouks)
 - [@begininvoke](https://github.com/begininvoke)
 
-## [0.3.6] - 2026-08-27
+## 0.3.6 - 2026-08-27
 
 ### LLM
 
@@ -598,7 +632,7 @@
 
 - [@Autumn-27](https://github.com/Autumn-27)
 
-## [0.3.5] - 2026-08-25
+## 0.3.5 - 2026-08-25
 
 ### LLM
 
@@ -647,7 +681,7 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@neouks](https://github.com/neouks)
 
-## [0.3.4] - 2026-08-24
+## 0.3.4 - 2026-08-24
 
 ### UI
 
@@ -696,7 +730,7 @@
 
 - [@neouks](https://github.com/neouks)
 
-## [0.3.3] - 2026-08-23
+## 0.3.3 - 2026-08-23
 
 ### Worker
 
@@ -845,7 +879,7 @@
 
 - [@neouks](https://github.com/neouks)
 
-## [0.3.2] - 2026-08-20
+## 0.3.2 - 2026-08-20
 
 ### Added
 
@@ -886,13 +920,4 @@
 - [@Autumn-27](https://github.com/Autumn-27)
 - [@neouks](https://github.com/neouks)
 
-[Unreleased]: https://github.com/Autumn-27/ARTEX/compare/v0.3.10...HEAD
-[0.3.10]: https://github.com/Autumn-27/ARTEX/compare/v0.3.9...v0.3.10
-[0.3.9]: https://github.com/Autumn-27/ARTEX/compare/v0.3.8...v0.3.9
-[0.3.8]: https://github.com/Autumn-27/ARTEX/compare/v0.3.7...v0.3.8
-[0.3.7]: https://github.com/Autumn-27/ARTEX/compare/v0.3.6...v0.3.7
-[0.3.6]: https://github.com/Autumn-27/ARTEX/compare/v0.3.5...v0.3.6
-[0.3.5]: https://github.com/Autumn-27/ARTEX/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/Autumn-27/ARTEX/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/Autumn-27/ARTEX/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/Autumn-27/ARTEX/compare/v0.3.1...v0.3.2
+[Unreleased]: https://github.com/wpsec/ARTEX-local/commits/artex-iteration/

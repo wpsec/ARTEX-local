@@ -162,7 +162,8 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
 // to the Go backend on :8787, whose CORS is open.
 //
 // Override either default with NEXT_PUBLIC_SSE_BASE (set it to "" to force same-origin).
-// Token is appended as ?token= because SSE can't carry cookies cross-origin.
+// Same-origin streams use the auth cookie; cross-origin streams need a query token
+// because EventSource cannot set Authorization headers. The server limits this to SSE.
 // mockReport returns a canned Markdown report for the demo.
 function mockReport(_task?: string): string {
   return `# ARTEX 渗透测试报告 — Acme Corp
@@ -193,8 +194,14 @@ export function sseUrl(path: string): string {
       ? `${window.location.protocol}//${window.location.hostname}:8787`
       : "");
   const token = getToken();
+  const target = `${base}${path}`;
+  const sameOrigin =
+    typeof window !== "undefined" && new URL(target, window.location.href).origin === window.location.origin;
+  if (!token || sameOrigin) {
+    return target;
+  }
   const sep = path.includes("?") ? "&" : "?";
-  return token ? `${base}${path}${sep}token=${encodeURIComponent(token)}` : `${base}${path}`;
+  return `${target}${sep}token=${encodeURIComponent(token)}`;
 }
 
 const get = <T>(p: string) => http<T>(p);
@@ -241,7 +248,10 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string }>("/auth/login", { username, password }),
   initPassword: (password: string) => post<{ token: string }>("/auth/init", { password }),
   changePassword: (oldPassword: string, newPassword: string) =>
-    post<{ ok: boolean }>("/auth/change-password", { old_password: oldPassword, new_password: newPassword }),
+    post<{ ok: boolean; token: string }>("/auth/change-password", {
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
 
   // ---- tasks ----
   tasks: () =>
@@ -1013,9 +1023,12 @@ export const api = {
   pinConversation: (id: number, pinned: boolean) => patch<Conversation>(`/conversations/${id}`, { pinned }),
   updateConversationProfile: (id: number, llm_profile_id: number | null) =>
     patch<{ ok: boolean }>(`/conversations/${id}/profile`, { llm_profile_id }),
-  deleteConversation: (id: number) => del<{ deleted: number }>(`/conversations/${id}`),
+  deleteConversation: (id: number) => del<{ deleted: number; cleanup_warning?: string }>(`/conversations/${id}`),
   deleteConversations: (ids: number[]) =>
-    post<{ items: { id: number; ok: boolean; error?: string }[] }>("/conversations/delete/batch", { ids }),
+    post<{ items: { id: number; ok: boolean; error?: string; cleanup_warning?: string }[] }>(
+      "/conversations/delete/batch",
+      { ids },
+    ),
   // Incremental tail: steps after `since` (id ASC) — live poll + post-send fetch.
   conversationMessages: (id: number, since = 0) =>
     get<{ items: Activity[]; cursor: number; running: boolean }>(`/conversations/${id}/messages?since=${since}`).then(

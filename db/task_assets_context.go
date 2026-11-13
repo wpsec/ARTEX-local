@@ -117,6 +117,41 @@ ORDER BY CASE WHEN ts.task_id=$1 THEN 0 ELSE 1 END, ts.id`, taskID)
 	return out, rows.Err()
 }
 
+// ListTaskScopePreviewWithSources returns a bounded scope preview and the full
+// row count so prompt construction never has to load a large task scope in full.
+func (s *AssetStore) ListTaskScopePreviewWithSources(taskID int64, limit int) ([]TaskScope, int, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	rows, err := s.db.Query(`WITH `+directTaskContextCTE+`
+SELECT ts.id, ts.task_id, ts.kind, COALESCE(ts.company_id,0), COALESCE(c.name,''), COALESCE(ts.domain,''),
+       COALESCE(ts.net::text,''), COALESCE(ts.value,''), ts.source, COALESCE(ts.reason,''), count(*) OVER()
+FROM task_scope ts
+JOIN context_tasks ctx ON ctx.task_id=ts.task_id
+LEFT JOIN companies c ON c.id=ts.company_id
+ORDER BY CASE WHEN ts.task_id=$1 THEN 0 ELSE 1 END, ts.id
+LIMIT $2`, taskID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := make([]TaskScope, 0, limit)
+	var total int64
+	for rows.Next() {
+		var scope TaskScope
+		var companyID int64
+		if err := rows.Scan(&scope.ID, &scope.TaskID, &scope.Kind, &companyID, &scope.CompanyName, &scope.Domain,
+			&scope.Net, &scope.Value, &scope.Source, &scope.Reason, &total); err != nil {
+			return nil, 0, err
+		}
+		if companyID > 0 {
+			scope.CompanyID = &companyID
+		}
+		out = append(out, scope)
+	}
+	return out, int(total), rows.Err()
+}
+
 // TaskCoverageWithSources computes one coverage view over the union of the
 // current task and its direct sources: source scopes and anchored assets extend
 // the denominator, while fact anchors count as tested. No row is copied.

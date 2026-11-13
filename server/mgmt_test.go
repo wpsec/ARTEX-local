@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -75,11 +76,51 @@ func TestMgmtAPI(t *testing.T) {
 	// mcp create → visible to planner → resource-side sees planner → delete clears it
 	// Remove any leftover from prior run to keep the test idempotent.
 	m.pg.Exec(`DELETE FROM mcp_servers WHERE name = 't-itest'`)
-	code, out = do("POST", "/api/mcp", map[string]any{"name": "t-itest", "transport": "stdio", "command": "x", "enabled": true})
+	t.Setenv("ARTEX_MCP_SECRET_MGMT_TEST", "fixture-api-secret")
+	code, out = do("POST", "/api/mcp", map[string]any{
+		"name": "t-itest", "transport": "stdio", "command": "x", "enabled": false,
+		"env": map[string]string{"TOKEN": "${ARTEX_MCP_SECRET_MGMT_TEST}"},
+	})
 	if code != 200 {
 		t.Fatalf("create mcp: %d", code)
 	}
 	mid := int64(out["id"].(float64))
+	code, out = do("GET", "/api/mcp", nil)
+	if code != 200 {
+		t.Fatalf("list mcp: %d", code)
+	}
+	encoded, err := json.Marshal(out["servers"])
+	if err != nil {
+		t.Fatalf("encode listed mcp servers: %v", err)
+	}
+	if strings.Contains(string(encoded), "fixture-api-secret") || !strings.Contains(string(encoded), "ARTEX_MCP_SECRET_MGMT_TEST") {
+		t.Fatal("MCP list API must return the reference without resolving the secret")
+	}
+	servers, ok := out["servers"].([]any)
+	if !ok {
+		t.Fatalf("MCP list response has an invalid servers field: %#v", out["servers"])
+	}
+	found := false
+	for _, item := range servers {
+		server, ok := item.(map[string]any)
+		if !ok || server["name"] != "t-itest" {
+			continue
+		}
+		found = true
+		if enabled, ok := server["enabled"].(bool); !ok || enabled {
+			t.Fatalf("new MCP should remain disabled: %#v", server["enabled"])
+		}
+	}
+	if !found {
+		t.Fatal("new MCP was missing from the list response")
+	}
+	code, out = do("GET", "/api/visibility/mcp/"+itoaTest(mid), nil)
+	if code != 200 {
+		t.Fatalf("initial resource visibility: %d", code)
+	}
+	if agents, _ := out["agents"].([]any); len(agents) != 0 {
+		t.Fatalf("new MCP should not be assigned automatically: %v", agents)
+	}
 
 	ag, _ := m.pg.GetAgentByKey("planner")
 	code, _ = do("PUT", "/api/agents/planner/visibility", map[string]any{"mcp": []int64{mid}, "skill": []int64{}})

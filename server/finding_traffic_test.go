@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/traffic"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/traffic"
 )
 
 func trafficEvidenceServer(t *testing.T) (*Server, *db.RecordedFinding, func(string, string, string) *httptest.ResponseRecorder) {
@@ -103,7 +103,7 @@ func TestFindingTrafficToolUpgradePreservesCustomization(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := pg.SetSetting("finding_traffic_tools_v1", "false"); err != nil {
+	if err := pg.SetSetting("finding_evidence_quotes_v1", "false"); err != nil {
 		t.Fatal(err)
 	}
 	s.seedFindingTrafficTools()

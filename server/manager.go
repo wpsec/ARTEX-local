@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	pgdb "github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/enrich"
-	"github.com/Autumn-27/artex/guard"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/traffic"
 	actool "github.com/Autumn-27/norma/tool"
+	"github.com/wpsec/ARTEX-local/agent"
+	pgdb "github.com/wpsec/ARTEX-local/db"
+	"github.com/wpsec/ARTEX-local/enrich"
+	"github.com/wpsec/ARTEX-local/guard"
+	"github.com/wpsec/ARTEX-local/intercept"
+	"github.com/wpsec/ARTEX-local/traffic"
 )
 
 // Task is one engagement: a description + goal + its own exploration store,
@@ -224,6 +224,11 @@ type Manager struct {
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
 
 	companyMu sync.Mutex // serializes task/company-scope commits with live handle registration
+	serverMu  sync.Mutex
+	servers   map[*Server]struct{}
+	closing   bool
+	closeOnce sync.Once
+	closeErr  error
 	// taskStateMu preserves commit order between PostgreSQL lifecycle writes and
 	// their in-memory mirrors. lifecycleMu makes snapshots race-free, but without
 	// this outer write lock an older request could commit first and publish last.
@@ -231,9 +236,9 @@ type Manager struct {
 	mu          sync.RWMutex
 	tasks       map[string]*Task
 	active      string
-	trafficOn   bool // 流量捕获开关（默认关；settings.traffic_capture）
+	trafficOn   bool // 流量捕获开关（新数据库默认开；旧库未配置时默认关）
 	llmRecOn    bool // LLM 录制开关（默认关；settings.llm_record）
-	// 联网搜索开关与来源（默认关；settings.web_search_*）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
+	// 联网搜索开关与来源（新数据库默认开；旧库未配置时默认关）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
 	// webSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关。
 	webSearchOn      bool
 	webSearchBackend string
@@ -412,7 +417,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	m.trafficOn = pg.GetBool(settingTrafficCapture, false)
 	// LLM 录制开关（默认关）。录制器每次调用时读取此标志。
 	m.llmRecOn = pg.GetBool(settingLLMRecord, false)
-	// Load persisted web-search config (default: off, ddgs).
+	// New databases seed web search on with DDGS; existing databases preserve the
+	// stored switch and retain the historical off fallback when the key is absent.
 	m.webSearchOn = pg.GetBool(settingWebSearchOn, false)
 	if v, ok, _ := pg.GetSetting(settingWebSearchBackend); ok && v != "" {
 		m.webSearchBackend = v
@@ -446,8 +452,8 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	return m, nil
 }
 
-// TrafficEnabled reports whether traffic capture is on (default off). When off,
-// no proxy/traffic tools/prompt are injected into agents (nothing is recorded).
+// TrafficEnabled reports whether traffic capture is on. When off, no proxy/traffic
+// tools/prompt are injected into agents (nothing is recorded).
 func (m *Manager) TrafficEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -801,12 +807,52 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 }
 
 func (m *Manager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.traffic != nil {
-		m.traffic.Close()
+	m.closeOnce.Do(func() {
+		m.serverMu.Lock()
+		m.closing = true
+		servers := make([]*Server, 0, len(m.servers))
+		for s := range m.servers {
+			servers = append(servers, s)
+		}
+		m.servers = nil
+		m.serverMu.Unlock()
+
+		for _, s := range servers {
+			s.Close()
+		}
+
+		if m.enrich != nil {
+			m.enrich.Close()
+		}
+		m.mu.Lock()
+		if m.traffic != nil {
+			m.traffic.Close()
+		}
+		if m.pg != nil {
+			m.closeErr = m.pg.Close()
+		}
+		m.mu.Unlock()
+	})
+	return m.closeErr
+}
+
+func (m *Manager) registerServer(s *Server) bool {
+	m.serverMu.Lock()
+	defer m.serverMu.Unlock()
+	if m.closing {
+		return false
 	}
-	return m.pg.Close()
+	if m.servers == nil {
+		m.servers = make(map[*Server]struct{})
+	}
+	m.servers[s] = struct{}{}
+	return true
+}
+
+func (m *Manager) unregisterServer(s *Server) {
+	m.serverMu.Lock()
+	delete(m.servers, s)
+	m.serverMu.Unlock()
 }
 
 // isTerminalStatus reports whether a task status is terminal (done/failed/timeout).
@@ -1454,7 +1500,7 @@ func (m *Manager) DeleteTask(id string, opts DeleteTaskOptions) (DeleteTaskResul
 		return result, nil
 	}
 
-	var fileStage *taskFileDeleteStage
+	var fileStage *managedFileDeleteStage
 	if opts.DeleteFiles {
 		fileStage, err = stageTaskFiles(m.dir, id, registered.ExplorationID)
 		if err != nil {
@@ -1522,7 +1568,7 @@ func (e *taskDeleteCommittedError) Error() string {
 
 func (e *taskDeleteCommittedError) Unwrap() error { return e.err }
 
-func rollbackTaskDelete(cause error, trafficStage *traffic.HostDeleteStage, fileStage *taskFileDeleteStage) error {
+func rollbackTaskDelete(cause error, trafficStage *traffic.HostDeleteStage, fileStage *managedFileDeleteStage) error {
 	errs := []error{cause}
 	// Reverse the preparation order. Both restorations are attempted even if the
 	// first one fails, and errors.Join preserves the original PostgreSQL error.
@@ -1563,24 +1609,24 @@ func (m *Manager) forgetTask(id string, numericID int64) {
 	m.mu.Unlock()
 }
 
-type stagedTaskPath struct {
+type stagedManagedPath struct {
 	source string
 	staged string
 }
 
-type taskFileDeleteStage struct {
+type managedFileDeleteStage struct {
 	stageDir string
-	moves    []stagedTaskPath
+	moves    []stagedManagedPath
 	deleted  bool
 	done     bool
 }
 
-// stageTaskFiles atomically renames the task workspace and owned transcripts to
-// a same-filesystem staging directory. The trailing dash in the transcript
-// prefix is significant: exploration 12 must not match exploration 123.
-func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDeleteStage, error) {
-	stage := &taskFileDeleteStage{}
+// stageTaskFiles atomically renames the task workspace, transcripts and noa
+// sidecars to a same-filesystem staging directory. The trailing dash in the
+// session prefix is significant: exploration 12 must not match exploration 123.
+func stageTaskFiles(dataDir, taskID string, explorationID int64) (*managedFileDeleteStage, error) {
 	var targets []string
+	prefix := fmt.Sprintf("exp%d-", explorationID)
 	taskDir := filepath.Join(dataDir, "tasks", taskID)
 	if _, err := os.Lstat(taskDir); err == nil {
 		targets = append(targets, taskDir)
@@ -1596,7 +1642,6 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 		}
 		entries = nil
 	}
-	prefix := fmt.Sprintf("exp%d-", explorationID)
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, prefix) || (!entry.IsDir() && !strings.HasSuffix(name, ".jsonl")) {
@@ -1604,35 +1649,78 @@ func stageTaskFiles(dataDir, taskID string, explorationID int64) (*taskFileDelet
 		}
 		targets = append(targets, filepath.Join(transcriptDir, name))
 	}
+
+	noaDir := filepath.Join(dataDir, "noa")
+	entries, err = os.ReadDir(noaDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		entries = nil
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) {
+			targets = append(targets, filepath.Join(noaDir, entry.Name()))
+		}
+	}
+	return stageDeletePaths(dataDir, "task-"+taskID+"-", targets)
+}
+
+// stageConversationFiles collects only paths derived from the numeric conversation
+// id, so deleting one thread cannot match another thread with a similar prefix.
+func stageConversationFiles(dataDir string, conversationID int64) (*managedFileDeleteStage, error) {
+	if conversationID <= 0 {
+		return nil, errors.New("conversation id must be positive")
+	}
+	sessionID := fmt.Sprintf("conv-%d", conversationID)
+	paths := []string{
+		filepath.Join(dataDir, "transcripts", sessionID+".jsonl"),
+		filepath.Join(dataDir, "transcripts", sessionID),
+		filepath.Join(dataDir, "sessions", sessionID),
+		filepath.Join(dataDir, "noa", "chat-"+sessionID),
+	}
+	targets := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if _, err := os.Lstat(path); err == nil {
+			targets = append(targets, path)
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	return stageDeletePaths(dataDir, fmt.Sprintf("conversation-%d-", conversationID), targets)
+}
+
+func stageDeletePaths(dataDir, prefix string, targets []string) (*managedFileDeleteStage, error) {
+	stage := &managedFileDeleteStage{}
 	if len(targets) == 0 {
 		stage.done = true
 		return stage, nil
 	}
-
 	parent := filepath.Join(dataDir, ".delete-staging")
 	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return nil, err
 	}
-	stage.stageDir, err = os.MkdirTemp(parent, "task-"+taskID+"-")
+	var err error
+	stage.stageDir, err = os.MkdirTemp(parent, prefix)
 	if err != nil {
 		return nil, err
 	}
 	for _, source := range targets {
 		staged := filepath.Join(stage.stageDir, fmt.Sprintf("%d-%s", len(stage.moves), filepath.Base(source)))
 		if err := os.Rename(source, staged); err != nil {
-			cause := fmt.Errorf("stage task file %s: %w", source, err)
+			cause := fmt.Errorf("stage managed file %s: %w", source, err)
 			if restoreErr := stage.rollback(); restoreErr != nil {
-				return nil, errors.Join(cause, fmt.Errorf("restore partially staged task files: %w", restoreErr))
+				return nil, errors.Join(cause, fmt.Errorf("restore partially staged files: %w", restoreErr))
 			}
 			return nil, cause
 		}
-		stage.moves = append(stage.moves, stagedTaskPath{source: source, staged: staged})
+		stage.moves = append(stage.moves, stagedManagedPath{source: source, staged: staged})
 	}
 	stage.deleted = true
 	return stage, nil
 }
 
-func (s *taskFileDeleteStage) commit() error {
+func (s *managedFileDeleteStage) commit() error {
 	if s == nil || s.done {
 		return nil
 	}
@@ -1641,7 +1729,7 @@ func (s *taskFileDeleteStage) commit() error {
 	return err
 }
 
-func (s *taskFileDeleteStage) rollback() error {
+func (s *managedFileDeleteStage) rollback() error {
 	if s == nil || s.done {
 		return nil
 	}
@@ -1665,7 +1753,7 @@ func (s *taskFileDeleteStage) rollback() error {
 	}
 	if len(errs) == 0 && s.stageDir != "" {
 		if err := os.RemoveAll(s.stageDir); err != nil {
-			errs = append(errs, fmt.Errorf("remove task file stage: %w", err))
+			errs = append(errs, fmt.Errorf("remove managed file stage: %w", err))
 		}
 	}
 	s.done = true

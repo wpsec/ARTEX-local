@@ -7,9 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/db"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 // maxChatUpload caps a single chat-attachment upload request (memory + spill).
@@ -74,8 +75,43 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		defer s.engine.decInflight(id)
 	}
+	if sub == "sessions" {
+		conversationID, ok := conversationIDFromSessionID(id)
+		if !ok {
+			writeErr(w, http.StatusBadRequest, "会话 id 无效")
+			return
+		}
+		pg := s.pg(w)
+		if pg == nil {
+			return
+		}
+		conversation, err := pg.GetConversation(conversationID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if conversation == nil {
+			writeErr(w, http.StatusNotFound, "conversation not found")
+			return
+		}
+		if !s.beginConversationFileOp(conversationID) {
+			writeErr(w, http.StatusConflict, "对话正在删除，无法上传附件")
+			return
+		}
+		defer s.endConversationFileOp(conversationID)
+	}
 	dir := filepath.Join(s.m.dir, sub, id, "uploads")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	root, ok := openWorkspaceRoot(w, s.m.dir)
+	if !ok {
+		return
+	}
+	defer closeWorkspaceRoot(root)
+	dirRel, err := filepath.Rel(s.m.dir, dir)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "上传目录无效")
+		return
+	}
+	if err := root.MkdirAll(dirRel, 0o755); err != nil {
 		writeErr(w, 500, "建目录失败: "+err.Error())
 		return
 	}
@@ -95,30 +131,51 @@ func (s *Server) chatUpload(w http.ResponseWriter, r *http.Request) {
 		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 			continue
 		}
-		dest := uniqueUploadPath(dir, name)
-		if err := saveUpload(hdr, dest); err != nil {
+		destRel, err := uniqueUploadPath(root, dirRel, name)
+		if err != nil {
+			writeErr(w, 500, "检查上传目标失败: "+err.Error())
+			return
+		}
+		if err := saveUpload(root, hdr, destRel); err != nil {
 			writeErr(w, 500, "保存失败: "+err.Error())
 			return
 		}
-		base := filepath.Base(dest)
-		out = append(out, chatAttachment{Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: dest})
+		base := filepath.Base(destRel)
+		out = append(out, chatAttachment{
+			Name: base, Path: "uploads/" + base, Size: hdr.Size, Abs: filepath.Join(s.m.dir, destRel),
+		})
 	}
 	writeJSON(w, 200, map[string]any{"attachments": out})
 }
 
+func conversationIDFromSessionID(id string) (int64, bool) {
+	if !strings.HasPrefix(id, "conv-") {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(strings.TrimPrefix(id, "conv-"), 10, 64)
+	if err != nil || value <= 0 || id != "conv-"+strconv.FormatInt(value, 10) {
+		return 0, false
+	}
+	return value, true
+}
+
 // uniqueUploadPath returns dir/name, or dir/name-1, dir/name-2… when it already exists,
 // so re-uploading the same filename never clobbers a prior attachment.
-func uniqueUploadPath(dir, name string) string {
+func uniqueUploadPath(root *os.Root, dir, name string) (string, error) {
 	dest := filepath.Join(dir, name)
-	if _, err := os.Stat(dest); os.IsNotExist(err) {
-		return dest
+	if _, err := root.Stat(dest); os.IsNotExist(err) {
+		return dest, nil
+	} else if err != nil {
+		return "", err
 	}
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
 	for i := 1; ; i++ {
 		cand := filepath.Join(dir, fmt.Sprintf("%s-%d%s", stem, i, ext))
-		if _, err := os.Stat(cand); os.IsNotExist(err) {
-			return cand
+		if _, err := root.Stat(cand); os.IsNotExist(err) {
+			return cand, nil
+		} else if err != nil {
+			return "", err
 		}
 	}
 }

@@ -1,12 +1,12 @@
 ---
 name: playwright-cli
-description: Automate browser interactions, test web pages and work with Playwright tests.
-allowed-tools: Bash(playwright-cli:*) Bash(npx:*) Bash(npm:*)
-  - browser
-mcps: browser, ScopeSentry
+description: 使用 Playwright CLI 执行可复现的浏览器脚本、生成 Playwright 测试或保存自动化产物；日常交互式页面探索使用 Browser MCP。
+allowed-tools: Bash(playwright-cli:*) Bash(npx:*)
 ---
 
 # Browser Automation with playwright-cli
+
+Browser MCP 用于临时、交互式页面探索；本 Skill 仅在需要脚本复用、生成测试代码或保存 Playwright 产物时使用。不要对同一操作同时启动 Browser MCP 和 CLI 会话。`playwright-cli` 已随 ARTEX 镜像安装；只有目标项目已安装 Playwright Test 时才运行测试命令，调用 `npx` 时使用 `--no-install`，不要临时下载依赖。
 
 ## Quick start
 
@@ -344,17 +344,7 @@ playwright-cli kill-all
 
 ## Installation
 
-If global `playwright-cli` command is not available, try a local version via `npx playwright cli`:
-
-```bash
-npx --no-install playwright --version
-```
-
-When local version is available, use `npx playwright cli` in all commands. Otherwise, install `playwright-cli` as a global command:
-
-```bash
-npm install -g @playwright/cli@latest
-```
+ARTEX 的默认镜像已安装 `playwright-cli` 及 Chromium。直接调用 `playwright-cli`；如果命令缺失，报告运行环境与镜像不一致，不要在任务中临时下载或全局安装软件包。目标项目若没有 Playwright Test 依赖，只能生成测试代码，不能声称已执行。
 
 ## Example: Form submission
 

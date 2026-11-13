@@ -23,10 +23,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/skill"
+	"github.com/wpsec/ARTEX-local/agent"
+	"github.com/wpsec/ARTEX-local/db"
 )
 
 // validSkillName checks the agentskills.io name constraints, widened so a skill can
@@ -1459,7 +1459,7 @@ func (s *Server) fsUploadSkill(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "安装失败："+err.Error())
 		return
 	}
-	if s.m.pg == nil {
+	if s.m == nil || s.m.pg == nil {
 		writeErr(w, 503, "Skill 已上传，但数据库不可用，默认授权未完成")
 		return
 	}

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -84,6 +85,10 @@ func (d *DB) ResolveIntercept(id int64, status, action, reason string) (bool, er
 	if err != nil {
 		return false, err
 	}
+	patch, err = interceptJSONBSafe(patch)
+	if err != nil {
+		return false, fmt.Errorf("encode intercept decision for jsonb: %w", err)
+	}
 	r, err := d.Exec(`UPDATE intercept_pending SET status=$2, decided_at=NOW(),
 		audit=CASE WHEN audit IS NULL THEN NULL ELSE audit || $3::jsonb ||
         CASE WHEN $4='allow' AND audit->>'correlation' IS DISTINCT FROM 'exact'
@@ -105,6 +110,10 @@ func (d *DB) CompleteIntercept(id int64, runID, toolUseID, status, output string
 	})
 	if err != nil {
 		return err
+	}
+	patch, err = interceptJSONBSafe(patch)
+	if err != nil {
+		return fmt.Errorf("encode intercept result for jsonb: %w", err)
 	}
 	_, err = d.Exec(`UPDATE intercept_pending SET audit=audit || $4::jsonb
 		WHERE id=$1 AND audit->>'run_id'=$2 AND audit->>'tool_use_id'=$3

@@ -1255,7 +1255,8 @@ export default function ChatPage() {
   const del = React.useCallback(
     async (id: number) => {
       try {
-        await api.deleteConversation(id);
+        const result = await api.deleteConversation(id);
+        if (result.cleanup_warning) toast.warning(`对话已删除，但部分文件清理未完成：${result.cleanup_warning}`);
         setSelectedId((current) => (current === id ? null : current));
         setSelectedConversationIds((current) => {
           if (!current.has(id)) return current;
@@ -1277,12 +1278,14 @@ export default function ChatPage() {
     setBulkDeleting(true);
     const deleted = new Set<number>();
     const failed: { id: number; error: string }[] = [];
+    const cleanupWarnings: string[] = [];
     try {
       for (let offset = 0; offset < ids.length; offset += 100) {
         const result = await api.deleteConversations(ids.slice(offset, offset + 100));
         for (const item of result.items) {
           if (item.ok) deleted.add(item.id);
           else failed.push({ id: item.id, error: item.error ?? "对话不存在" });
+          if (item.cleanup_warning) cleanupWarnings.push(`#${item.id}：${item.cleanup_warning}`);
         }
       }
       if (deleted.has(selectedId ?? -1)) selectConversation(null);
@@ -1292,6 +1295,9 @@ export default function ChatPage() {
         return next;
       });
       if (deleted.size > 0) toast.success(`已删除 ${deleted.size} 个对话`);
+      if (cleanupWarnings.length > 0) {
+        toast.warning(`部分会话文件清理未完成：${cleanupWarnings.slice(0, 3).join("；")}${cleanupWarnings.length > 3 ? " 等" : ""}`);
+      }
       if (failed.length > 0) {
         const details = failed
           .slice(0, 3)
