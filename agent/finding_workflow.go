@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/wpsec/ARTEX-local/db"
@@ -27,6 +28,12 @@ func IsFindingTrafficBindingEnabled() bool {
 // all actual reporters (including Planner and custom chat agents) see the same
 // API contract. Disabled/unbound tools are never reintroduced here.
 func findingWorkflowTools(agentKey string, tools []actool.CoreTool) ([]actool.CoreTool, string) {
+	tools = append([]actool.CoreTool(nil), tools...)
+	for i, tool := range tools {
+		if tool.Name() == "update_finding_report" && !strings.Contains(tool.Description(), DeliveryReportSaveGuidance) {
+			tools[i] = DecorateTool(tool, tool.Description()+"\n"+DeliveryReportSaveGuidance, tool.InputSchema())
+		}
+	}
 	if !findingTrafficBindingEnabled() {
 		out := make([]actool.CoreTool, 0, len(tools))
 		for _, tool := range tools {
