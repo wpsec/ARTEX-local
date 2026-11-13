@@ -1,5 +1,5 @@
 <h2 align="center"><a href="https://github.com/wpsec/ARTEX-local/tree/artex-pro">ARTEX-Pro 正式分支</a></h2>
-<p align="center"><code>main</code> 保留原始 ARTEX 源码基线 · 日常开发分支：<code>artex-iteration-dev</code></p>
+<p align="center"><code>main</code> 保留原始 ARTEX 源码基线 · 日常开发分支：<code>artex-iteration-dev</code> · <code>artex-pro</code> 为衍生正式版</p>
 
 <div align="center">
 
