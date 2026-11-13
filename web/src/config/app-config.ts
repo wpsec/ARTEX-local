@@ -4,7 +4,7 @@ const currentYear = new Date().getFullYear();
 
 export const APP_CONFIG = {
   name: "ARTEX-Pro",
-  imageName: "artex-pro",
+  imageName: process.env.NEXT_PUBLIC_ARTEX_IMAGE_NAME || "artex-pro",
   version: packageJson.version,
   copyright: `© ${currentYear}, ARTEX-Pro.`,
   meta: {

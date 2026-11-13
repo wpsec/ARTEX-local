@@ -59,7 +59,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 
 默认 Compose 部署只启动 ARTEX-Pro 和 PostgreSQL。OWASP ZAP 作为 ARTEX-Pro 容器内的进程运行，并通过内置 MCP 提供 Web 测试工具。
 
-项目版本记录在根目录的 `VERSION`，当前版本为 `0.3.17`，从原生 ARTEX `0.3.15` 接续。页面右上角显示完整镜像标识 `artex-pro:0.3.17`。发布 `v0.3.17` 等语义版本 tag 时，GHCR 镜像 `ghcr.io/wpsec/artex-pro` 会带有 `0.3.17`、`v0.3.17` 和 `latest` 标签。部署时可在 `.env` 中把 `ARTEX_TAG` 设为固定版本，避免跟随 `latest` 更新。
+项目版本记录在根目录的 `VERSION`，当前版本为 `0.3.17`，从原生 ARTEX `0.3.15` 接续。正式版页面显示 `artex-pro:0.3.17`；`artex-dev` 本地构建显示 `artex-pro-dev:0.3.17`。发布 `v0.3.17` 等语义版本 tag 时，GHCR 正式版镜像 `ghcr.io/wpsec/artex-pro` 会带有 `0.3.17`、`v0.3.17` 和 `latest` 标签。部署时可在 `.env` 中把 `ARTEX_TAG` 设为固定版本，避免跟随 `latest` 更新。
 
 需要 Docker Engine 和 Docker Compose。
 
@@ -86,7 +86,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 ```bash
 version="$(tr -d '[:space:]' < VERSION)"
 arch="$(go env GOARCH)"
-ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
+NEXT_PUBLIC_ARTEX_IMAGE_NAME=artex-pro-dev ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
 ```
 
 该命令会安装前端依赖、静态构建 Next.js 前端并编译 Go 后端。`build:static` 使用 Webpack；生成的前端资源会嵌入 Linux 二进制。然后构建版本化本地镜像并启动 Compose：
@@ -96,7 +96,7 @@ ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.
 ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
 
-构建得到的镜像名为 `artex-pro:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角会显示 `artex-pro:<VERSION>`；服务健康接口仍返回纯语义版本，供更新检查使用。
+`artex-dev` 构建得到的本地镜像名为 `artex-pro-dev:<VERSION>`，并带有 `org.opencontainers.image.version` 标签。页面右上角显示 `artex-pro-dev:<VERSION>`；服务健康接口仍返回纯语义版本，供更新检查使用。正式发布镜像仍使用 `artex-pro:<VERSION>`。
 
 PostgreSQL 数据保存在 Docker 卷 `pgdata`；`./data` 和 `./skills` 保存在项目目录。升级时，旧 Compose 项目中当前配置未定义的遗留服务容器不会自动清理；确认不再需要后，可在启动命令中加入 `--remove-orphans` 移除这些容器，数据卷和镜像会保留。
 
@@ -130,7 +130,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml down
 ```bash
 version="$(tr -d '[:space:]' < VERSION)"
 arch="$(go env GOARCH)"
-ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
+NEXT_PUBLIC_ARTEX_IMAGE_NAME=artex-pro-dev ARTEX_BUILD_VERSION="$version" ARTEX_OUTPUT="dist/${arch}/artex" ./build.sh --target "linux/${arch}" --no-compress
 ARTEX_VERSION="$version" docker compose -f docker-compose.yml -f docker-compose.local.yml build artex
 ```
 
